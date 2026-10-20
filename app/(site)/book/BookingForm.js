@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useRef, useState, startTransition } from "react";
 import { submitBooking } from "./actions";
 
 const fmt = (p) => "GH₵ " + (p / 100).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -30,7 +30,11 @@ export default function BookingForm({ canPayOnline = true, departureId, price, d
   const setName = (i, v) => setNames((arr) => { const a = [...arr]; a[i] = v; return a; });
 
   return (
-    <form action={action} className="card card-pad" onKeyDown={(e) => { if (e.key === "Enter" && step < 2 && e.target.tagName === "INPUT") { e.preventDefault(); next(); } }}>
+    <form
+      className="card card-pad"
+      // Submit manually so React doesn't clear what the customer typed if there's an error.
+      onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); startTransition(() => action(fd)); }}
+      onKeyDown={(e) => { if (e.key === "Enter" && step < 2 && e.target.tagName === "INPUT") { e.preventDefault(); next(); } }}>
       <ol className="steps">
         {STEPS.map((s, i) => (
           <li key={s} className={i === step ? "step-on" : i < step ? "step-done" : ""}>
@@ -41,7 +45,12 @@ export default function BookingForm({ canPayOnline = true, departureId, price, d
         ))}
       </ol>
 
-      {state?.error && <div className="alert alert-error">{state.error}</div>}
+      {state?.error && (
+        <div className="alert alert-error" role="alert">
+          {state.error}
+          {/waiting for payment/.test(state.error) && <> <a href="/find">Find my booking</a></>}
+        </div>
+      )}
       <input type="hidden" name="departureId" value={departureId} />
       <input type="hidden" name="count" value={count} />
       <div className="hp" aria-hidden="true"><label>Leave this empty<input name="website" tabIndex={-1} autoComplete="off" /></label></div>

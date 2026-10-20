@@ -6,5 +6,13 @@ if (process.env.NODE_ENV === "production") {
   process.exit(1);
 }
 const dir = process.env.DATA_DIR || path.join(process.cwd(), "data");
-for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) if (f.startsWith("tourflow.db")) fs.rmSync(path.join(dir, f));
+try {
+  for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) if (f.startsWith("tourflow.db")) fs.rmSync(path.join(dir, f));
+} catch (e) {
+  if (["EBUSY", "EPERM"].includes(e.code)) {
+    console.error("The database is in use. Stop the app first (press Ctrl+C in the terminal running it), then try again.");
+    process.exit(1);
+  }
+  throw e;
+}
 console.log("Database removed. It will be recreated with sample data the next time the app starts.");

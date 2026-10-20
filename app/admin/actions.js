@@ -49,6 +49,11 @@ export async function saveTour(formData) {
     image_url: image,
     active: formData.get("active") ? 1 : 0,
   };
+  // If no web address was typed, pick a free one automatically (cape-coast, cape-coast-2, …).
+  if (!text(formData, "slug", { max: 80 })) {
+    const base = data.slug;
+    for (let n = 2; db.prepare("SELECT 1 FROM tours WHERE slug = ? AND id != ?").get(data.slug, id || 0); n++) data.slug = `${base}-${n}`;
+  }
   let tourId = id;
   try {
     if (id) {

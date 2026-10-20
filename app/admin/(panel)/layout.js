@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { can, ROLES } from "@/lib/permissions";
 import { company, paystackEnabled, demoPaymentsAllowed } from "@/lib/config";
 import AdminNav from "@/components/AdminNav";
+import LiveUpdates from "@/components/LiveUpdates";
 import { logout } from "../account-actions";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ export default async function AdminLayout({ children }) {
           <Link href="/admin/account" className="sidebar-user">
             <strong>{user.name}</strong><span>{ROLES[user.role]}</span>
           </Link>
+          <LiveUpdates />
           <p style={{ padding: "0 12px", opacity: .7 }}>Payments: {payMode}</p>
           <Link href="/" target="_blank" style={{ display: "block", padding: "6px 12px", color: "#d6e4e2" }}>View website ↗</Link>
           <form action={logout}><button className="btn btn-sm btn-secondary" style={{ margin: "8px 12px" }}>Sign out</button></form>

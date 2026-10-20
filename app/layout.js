@@ -15,7 +15,7 @@ export default function RootLayout({ children }) {
   const brand = company.brandColor;
   return (
     <html lang="en">
-      <body style={brand ? { "--brand": brand, "--brand-dark": brand } : undefined}>{children}</body>
+      <body style={brand ? { "--brand": brand, "--brand-dark": `color-mix(in srgb, ${brand} 78%, black)`, "--brand-soft": `color-mix(in srgb, ${brand} 18%, white)` } : undefined}>{children}</body>
     </html>
   );
 }

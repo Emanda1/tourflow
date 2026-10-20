@@ -5,7 +5,7 @@ import { getBookingForCustomer } from "@/lib/access";
 import { amountDueNow } from "@/lib/bookings";
 import { money, date, dateRange } from "@/lib/format";
 import Toast from "@/components/Toast";
-import { company, onlinePaymentsAvailable } from "@/lib/config";
+import { company, onlinePaymentsAvailable, appUrl } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Your booking", robots: { index: false } };
@@ -27,6 +27,10 @@ export default async function BookingPage({ params, searchParams }) {
           <div className="success-icon">✓</div>
           <h2 style={{ margin: 0 }}>You're going to {b.tour_title}!</h2>
           <p className="muted" style={{ margin: "6px 0 0" }}>Save your reference <strong>{b.ref}</strong>. We'll SMS pickup details before the trip.</p>
+          <div className="share-row" style={{ justifyContent: "center", marginTop: 14 }}>
+            <a className="btn btn-sm" href={`/booking-ics/${b.ref}?k=${b.access_token}`}>📅 Add to calendar</a>
+            <a className="btn btn-sm btn-secondary" target="_blank" rel="noopener" href={`https://wa.me/?text=${encodeURIComponent(`I'm going on ${b.tour_title} on ${dateRange(b.start_date, b.end_date)} with ${company.name}! Join me: ${appUrl}/tours/${b.tour_slug}`)}`}>Tell friends on WhatsApp</a>
+          </div>
         </div>
       )}
       {sp.failed && <div className="alert alert-error">That payment did not go through. You can try again below.</div>}
@@ -94,6 +98,7 @@ export default async function BookingPage({ params, searchParams }) {
             </form>
           )}
           {b.balance <= 0 && <p className="alert alert-ok" style={{ margin: 0 }}>Fully paid. See you on the trip!</p>}
+          {b.status !== "cancelled" && <a className="btn btn-secondary btn-block" style={{ marginTop: 12 }} href={`/booking-ics/${b.ref}?k=${b.access_token}`}>📅 Add to my calendar</a>}
           {b.paid > 0 && <Link className="btn btn-secondary btn-block" style={{ marginTop: 12 }} href={`/booking/${b.ref}/receipt?k=${b.access_token}`}>View / print receipt</Link>}
           <p className="small muted" style={{ marginTop: 16 }}>Questions? Call {company.phone}</p>
           <details className="small muted"><summary>Cancellation policy</summary><p style={{ marginTop: 8 }}>{company.cancellationPolicy}</p></details>

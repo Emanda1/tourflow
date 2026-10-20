@@ -21,7 +21,9 @@ export default async function ToursPage() {
             <td>{t.upcoming}</td>
             <td>{t.active ? <span className="badge badge-ok">Live</span> : <span className="badge badge-closed">Hidden</span>}</td>
           </tr>
-        ))}</tbody>
+        ))}
+        {tours.length === 0 && <tr><td colSpan={7} className="muted" style={{ padding: 24 }}>No tours yet. Click <strong>+ New tour</strong> to add your first one, then add dates to it so customers can book.</td></tr>}
+        </tbody>
       </table></div>
     </div>
   );

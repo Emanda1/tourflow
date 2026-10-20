@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { completePayment, bookingPath, payingBookingToken } from "@/lib/checkout";
-import { appUrl } from "@/lib/config";
 import { getBookingForCustomer } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request) {
   const url = new URL(request.url);
   const reference = url.searchParams.get("reference") || url.searchParams.get("trxref") || "";
-  const to = (path) => NextResponse.redirect(new URL(path, appUrl));
+  const to = (path) => NextResponse.redirect(new URL(path, request.url));
   try {
     const result = await completePayment(reference);
     if (!result) return to("/");

@@ -8,6 +8,11 @@ import RevenueChart from "@/components/RevenueChart";
 export default async function Dashboard() {
   const user = await requireUser("dashboard.view");
   const finance = can(user, "finance.view");
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayTrips = listDepartures().filter((d) => d.status !== "cancelled" && d.start_date <= todayIso && (d.end_date || d.start_date) >= todayIso);
+  const newToday = db.prepare("SELECT COUNT(*) AS n FROM bookings WHERE status != 'cancelled' AND date(created_at) = date('now')").get().n;
   const lateCount = db.prepare("SELECT COUNT(*) AS n FROM bookings WHERE status = 'cancelled' AND cancel_reason LIKE 'PAID %'").get().n;
   const revenue = db.prepare(`SELECT
       COALESCE(SUM(${NET_AMOUNT}),0) AS total,
@@ -38,13 +43,32 @@ export default async function Dashboard() {
 
   return (
     <div className="stack">
-      <div className="spread">
-        <h1 style={{ margin: 0 }}>Dashboard</h1>
-        <div className="row">
-          {can(user, "data.export") && <a href="/admin/export/bookings" className="btn btn-secondary">Export bookings (CSV)</a>}
-          {can(user, "bookings.edit") && <Link href="/admin/bookings/new" className="btn">+ New booking</Link>}
+      <section className="greet">
+        <h1>{greeting}, {user.name.split(" ")[0]} 👋</h1>
+        <p>{todayTrips.length ? `${todayTrips.length} trip${todayTrips.length > 1 ? "s" : ""} on the road today.` : "No trips on the road today."}
+          {newToday ? ` ${newToday} new booking${newToday > 1 ? "s" : ""} so far today.` : ""}</p>
+        <div className="quick">
+          {can(user, "bookings.edit") && <Link href="/admin/bookings/new">+ New booking</Link>}
+          {can(user, "trips.view") && <Link href="/admin/calendar">📅 Calendar</Link>}
+          {can(user, "enquiries.manage") && <Link href="/admin/enquiries">💬 Trip requests</Link>}
+          {can(user, "data.export") && <a href="/admin/export/bookings">⬇ Export bookings</a>}
+          <Link href="/" target="_blank">🌍 View website</Link>
         </div>
-      </div>
+      </section>
+
+      {todayTrips.length > 0 && (
+        <section className="card card-pad">
+          <h2>On the road today</h2>
+          <div className="today-list">
+            {todayTrips.map((d) => (
+              <Link key={d.id} href={`/admin/departures/${d.id}`} className="today-item">
+                <span><strong>{d.tour_title}</strong><span className="small muted"> · {d.guide_name || "No guide"} · {d.vehicle_name || "No vehicle"}</span></span>
+                <span className="badge badge-ok">{d.booked} travellers</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="grid grid-4">
         {finance && <>

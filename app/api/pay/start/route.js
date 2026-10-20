@@ -4,13 +4,13 @@ import { getBookingForCustomer } from "@/lib/access";
 import { toPesewas } from "@/lib/format";
 import { rateLimit, MINUTE } from "@/lib/ratelimit";
 import { clientIp } from "@/lib/request";
-import { appUrl } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
   const url = new URL(request.url);
-  const to = (path) => NextResponse.redirect(new URL(path, appUrl), 303);
+  // Our own pages stay on whatever address the visitor is using; only Paystack links are absolute.
+  const to = (path) => NextResponse.redirect(path.startsWith("/") ? new URL(path, request.url) : new URL(path), 303);
   const booking = getBookingForCustomer(url.searchParams.get("ref"), url.searchParams.get("k"));
   if (!booking) return to("/find");
   if (!rateLimit(`pay:${await clientIp()}`, 20, 10 * MINUTE)) return to(bookingPath(booking, "&error=busy"));

@@ -16,7 +16,10 @@ export default function RevenueChart({ months }) {
   const step = iw / months.length;
   const bw = Math.min(44, step * 0.55);
   const y = (v) => pad.t + ih - (v / nice) * ih;
-  const ticks = (Number.isInteger(nice / 4) || metric === "revenue" ? [0, 0.25, 0.5, 0.75, 1] : [0, 0.5, 1]).map((f) => f * nice);
+  const quarter = nice / 4;
+  const quarterIsRound = Number.isInteger(quarter / Math.pow(10, Math.floor(Math.log10(quarter || 1))));
+  const fractions = quarterIsRound && (metric === "revenue" || Number.isInteger(quarter)) ? [0, 0.25, 0.5, 0.75, 1] : metric === "revenue" ? [0, 0.2, 0.4, 0.6, 0.8, 1] : [0, 0.5, 1];
+  const ticks = fractions.map((f) => f * nice);
   const label = (v) => (metric === "revenue" ? short(v) : String(Math.round(v)));
   const total = values.reduce((a, b) => a + b, 0);
 

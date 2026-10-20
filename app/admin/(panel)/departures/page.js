@@ -30,7 +30,9 @@ export default async function DeparturesPage({ searchParams }) {
             <td>{d.driver_name || "—"}{d.vehicle_name ? ` · ${d.vehicle_name}` : ""}</td>
             <td className="num">{money(d.price)}</td>
           </tr>
-        ))}</tbody>
+        ))}
+        {deps.length === 0 && <tr><td colSpan={7} className="muted" style={{ padding: 24 }}>No trips here yet. Open a tour under Tours and use "Add a date".</td></tr>}
+        </tbody>
       </table></div>
     </div>
   );

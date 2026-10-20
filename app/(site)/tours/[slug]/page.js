@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db, listDepartures } from "@/lib/db";
-import { money, lines, coverStyle } from "@/lib/format";
+import { money, lines, coverStyle, date } from "@/lib/format";
 import BookingWidget from "@/components/BookingWidget";
 import Accordion from "@/components/Accordion";
 import ShareButton from "@/components/ShareButton";
@@ -25,22 +25,25 @@ export default async function TourPage({ params }) {
   if (!tour) notFound();
   const departures = listDepartures({ tourId: tour.id, upcomingOnly: true, openOnly: true });
   const days = lines(tour.itinerary).map(splitDay).map((d) => ({ title: `${d.title} · ${d.body.split(",")[0]}`, body: d.body }));
+  const recent = db.prepare(`SELECT COALESCE(SUM(b.travellers), 0) AS n FROM bookings b JOIN departures d ON d.id = b.departure_id
+    WHERE d.tour_id = ? AND b.status != 'cancelled' AND b.created_at > datetime('now', '-30 days')`).get(tour.id).n;
+  const nextDep = departures.find((d) => d.capacity - d.booked > 0);
   const related = db.prepare("SELECT slug, title, price FROM tours WHERE active = 1 AND id != ? AND category = ? LIMIT 3").all(tour.id, tour.category);
 
   return (
-    <main className="page container">
+    <main className="page container has-mobile-book">
       <Link href="/#tours" className="small">← All tours</Link>
       <div className="detail-cover" style={{ ...coverStyle(tour.image_url), marginTop: 12 }}>
         <div className="detail-cover-text">
           <span className="badge badge-light">{tour.category}</span>
           <h1>{tour.title}</h1>
-          <span>{tour.destination} · {tour.duration_days} day{tour.duration_days > 1 ? "s" : ""}</span>
+          <span>{tour.destination} · {tour.duration_days} day{tour.duration_days > 1 ? "s" : ""}{recent >= 3 ? ` · 🔥 ${recent} people booked in the last 30 days` : ""}</span>
         </div>
       </div>
       <div className="two-col">
         <div className="stack">
           <div className="spread">
-            <p style={{ fontSize: "1.08rem", margin: 0, flex: 1, minWidth: 260 }}>{tour.description}</p>
+            <p style={{ fontSize: "1.08rem", margin: 0, flex: 1, minWidth: "min(100%, 420px)" }}>{tour.description}</p>
             <ShareButton title={tour.title} />
           </div>
 
@@ -77,11 +80,17 @@ export default async function TourPage({ params }) {
           )}
         </div>
 
-        <aside className="card card-pad sticky-aside">
+        <aside className="card card-pad sticky-aside" id="book">
           <div className="price" style={{ fontSize: "1.6rem" }}>{money(tour.price)} <span className="muted small">/ person</span></div>
           <BookingWidget departures={departures} depositPercent={tour.deposit_percent} />
         </aside>
       </div>
+      {nextDep && (
+        <div className="mobile-book">
+          <div><strong>{money(nextDep.price)}</strong> <span className="small muted">/ person</span><div className="small muted">Next: {date(nextDep.start_date)}</div></div>
+          <a href="#book" className="btn">Choose date</a>
+        </div>
+      )}
     </main>
   );
 }

@@ -3,7 +3,8 @@ import crypto from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db, setSettings } from "@/lib/db";
-import { requireUser, createSession, destroySession, destroyAllSessions, currentUser, userCount, MAX_FAILED_LOGINS, LOCK_MINUTES } from "@/lib/auth";
+import { requireUser, createSession, destroySession, destroyAllSessions, currentUser, userCount } from "@/lib/auth";
+import { isLocked, noteFailure, clearFailures, clearAllFailures, MAX_FAILED_LOGINS } from "@/lib/lockout";
 import { hashPassword, verifyPassword, passwordProblem } from "@/lib/password";
 import { ROLES } from "@/lib/permissions";
 import { audit } from "@/lib/audit";
@@ -14,7 +15,9 @@ import { saveImage, UploadError } from "@/lib/uploads";
 import { runBackup } from "@/lib/backup";
 import { sendSms } from "@/lib/notify";
 import { normalisePhone } from "@/lib/format";
-import { company } from "@/lib/config";
+import { company, appUrl, isProduction } from "@/lib/config";
+import { createResetToken, findResetUser, markResetUsed } from "@/lib/passwordReset";
+import { sendPasswordResetEmail, emailConfigured } from "@/lib/mailer";
 
 const fail = (path, msg) => redirect(`${path}?error=${encodeURIComponent(msg)}`);
 // Used to make failed logins for unknown emails take as long as real ones.
@@ -33,44 +36,62 @@ export async function login(prev, formData) {
   const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
   const valid = await verifyPassword(password, user?.password_hash || DUMMY_HASH);
   // Lockout is per account AND per connection, so a stranger can't keep a real staff member locked out.
-  const lockKey = `login-lock:${email}|${ip}`;
-  const locked = isLocked(lockKey);
+  const locked = isLocked(email, ip);
   if (!user || !user.active || locked || !valid) {
     if (user && !valid) {
-      const fails = noteFailure(lockKey);
+      const fails = noteFailure(email, ip);
       db.prepare("UPDATE users SET failed_logins = failed_logins + 1 WHERE id = ?").run(user.id);
       await audit({ id: user.id, name: user.name }, fails >= MAX_FAILED_LOGINS ? "login.locked" : "login.failed", email);
     }
     return generic;
   }
-  clearFailures(lockKey);
+  clearFailures(email, ip);
   db.prepare("UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = datetime('now') WHERE id = ?").run(user.id);
   await createSession(user.id);
   await audit(user, "login.success", email);
   redirect(user.must_change_password ? "/admin/account?first=1" : "/admin");
 }
 
-// Failed sign-ins per (email, connection): MAX_FAILED_LOGINS wrong passwords locks that pair for LOCK_MINUTES.
-const failures = globalThis.__tfLoginFails ?? (globalThis.__tfLoginFails = new Map());
-function isLocked(key) {
-  const f = failures.get(key);
-  return Boolean(f && f.lockedUntil && f.lockedUntil > Date.now());
+/* ---------- Forgot password ---------- */
+
+export async function requestPasswordReset(prev, formData) {
+  const ip = await clientIp();
+  const email = text(formData, "email", { max: 160 }).toLowerCase();
+  const done = { ok: true, email };
+  if (!isEmail(email)) return { error: "Enter the email you sign in with.", values: formValues(formData) };
+  if (!emailConfigured() && isProduction) {
+    return { error: "This system can't send emails yet, so password links can't be sent. Ask your owner to reset your password under Staff accounts. Owners: see \"Owner locked out\" in DEPLOYMENT.md." };
+  }
+  // Same reply whether or not the account exists, so this page can't be used to find staff emails.
+  if (!rateLimit(`reset-ip:${ip}`, 5, 60 * MINUTE) || !rateLimit(`reset-email:${email}`, 3, 60 * MINUTE)) return done;
+  const user = db.prepare("SELECT * FROM users WHERE email = ? AND active = 1").get(email);
+  if (!user) return done;
+  const link = `${appUrl}/admin/reset?t=${createResetToken(user.id, ip)}`;
+  await audit(user, "password.reset_requested", email);
+  if (emailConfigured()) {
+    await sendPasswordResetEmail(user, link);
+  } else {
+    // Development only (no email set up): print the link in the terminal running the app.
+    console.log(`\n[password reset] Link for ${email} (valid 30 minutes):\n${link}\n`);
+    return { ...done, devNote: true };
+  }
+  return done;
 }
-function noteFailure(key) {
-  const now = Date.now();
-  const f = failures.get(key);
-  const fresh = !f || now - f.first > LOCK_MINUTES * MINUTE;
-  const next = fresh ? { count: 1, first: now, lockedUntil: 0 } : { ...f, count: f.count + 1 };
-  if (next.count >= MAX_FAILED_LOGINS) next.lockedUntil = now + LOCK_MINUTES * MINUTE;
-  failures.set(key, next);
-  if (failures.size > 10000) for (const [k, v] of failures) if (now - v.first > LOCK_MINUTES * MINUTE) failures.delete(k);
-  return next.count;
-}
-function clearFailures(key) {
-  failures.delete(key);
-}
-function clearAllFailures(email) {
-  for (const k of failures.keys()) if (k.startsWith(`login-lock:${String(email).toLowerCase()}|`)) failures.delete(k);
+
+export async function resetPassword(prev, formData) {
+  const token = String(formData.get("t") || "");
+  const user = findResetUser(token);
+  if (!user) return { error: "This reset link has expired or was already used. Ask for a new one." };
+  const pw = String(formData.get("password") || "");
+  const problem = passwordProblem(pw, { name: user.name, email: user.email });
+  if (problem) return { error: problem };
+  if (pw !== formData.get("confirm")) return { error: "The two passwords don't match." };
+  db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0, failed_logins = 0, locked_until = NULL WHERE id = ?").run(await hashPassword(pw), user.id);
+  markResetUsed(user.reset_id);
+  clearAllFailures(user.email);
+  destroyAllSessions(user.id);
+  await audit({ id: user.id, name: user.name }, "password.reset", user.email);
+  redirect("/admin/login?reset=1");
 }
 
 export async function logout() {
@@ -185,6 +206,9 @@ export async function updateUser(formData) {
     destroyAllSessions(id);
     clearAllFailures(target.email);
     await audit(owner, "staff.reset_password", target.email);
+  } else if (action === "unlock") {
+    clearAllFailures(target.email);
+    await audit(owner, "staff.unlock", target.email);
   } else if (action === "signout") {
     destroyAllSessions(id);
     await audit(owner, "staff.signout", target.email);

@@ -11,7 +11,7 @@ export default function LoginForm() {
       <div className="field"><label htmlFor="email">Email</label><input id="email" name="email" defaultValue={v.email} type="email" required autoComplete="username" autoFocus maxLength={160} /></div>
       <div className="field"><label htmlFor="password">Password</label><input id="password" name="password" type="password" required autoComplete="current-password" maxLength={200} /></div>
       <button className="btn btn-block" disabled={pending}>{pending ? "Signing in…" : "Sign in"}</button>
-      <p className="small muted" style={{ marginTop: 12, marginBottom: 0 }}>Forgot your password? Ask the owner to reset it.</p>
+      <p className="small" style={{ marginTop: 12, marginBottom: 0 }}><a href="/admin/forgot">Forgot your password?</a></p>
     </form>
   );
 }

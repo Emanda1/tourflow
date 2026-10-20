@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "reset-db": "node scripts/reset-db.mjs",
-    "test": "node --test tests/security.test.mjs tests/bookings.test.mjs",
+    "test": "node --test tests/security.test.mjs tests/bookings.test.mjs tests/accounts.test.mjs",
     "create-owner": "node scripts/create-owner.mjs"
   },
   "dependencies": {

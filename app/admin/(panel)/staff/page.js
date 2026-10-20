@@ -6,6 +6,7 @@ import { date } from "@/lib/format";
 import Toast from "@/components/Toast";
 import { updateUser } from "../../account-actions";
 import NewUserForm from "./NewUserForm";
+import { isLockedAnywhere } from "@/lib/lockout";
 
 const ROLE_HELP = {
   owner: "Everything, including staff accounts, settings, backups and the activity log.",
@@ -40,6 +41,7 @@ export default async function StaffPage({ searchParams }) {
                 </td>
                 <td>
                   {!u.active ? <span className="badge badge-closed">Deactivated</span>
+                    : isLockedAnywhere(u.email) ? <span className="badge badge-cancelled" title="Too many wrong passwords. Reset the password or reactivate to unlock.">Locked</span>
                     : u.must_change_password ? <span className="badge badge-warn">Temp password</span>
                     : <span className="badge badge-ok">Active</span>}
                 </td>
@@ -53,6 +55,7 @@ export default async function StaffPage({ searchParams }) {
                         <input name="password" placeholder="New temporary password" minLength={10} maxLength={200} required autoComplete="off" />
                         <button className="btn btn-secondary btn-sm" style={{ marginTop: 6 }}>Reset password</button>
                       </form>
+                      {isLockedAnywhere(u.email) && <form action={updateUser}><input type="hidden" name="id" value={u.id} /><input type="hidden" name="action" value="unlock" /><button className="btn btn-secondary btn-sm">Unlock sign-in</button></form>}
                       <form action={updateUser}><input type="hidden" name="id" value={u.id} /><input type="hidden" name="action" value="signout" /><button className="btn btn-secondary btn-sm">Sign out everywhere</button></form>
                       {u.id !== me.id && (u.active
                         ? <form action={updateUser}><input type="hidden" name="id" value={u.id} /><input type="hidden" name="action" value="deactivate" /><button className="btn btn-danger btn-sm">Deactivate</button></form>

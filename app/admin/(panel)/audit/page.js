@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { dateTime } from "@/lib/format";
 
 export default async function AuditPage({ searchParams }) {
   await requireUser("audit.view");
@@ -16,7 +17,7 @@ export default async function AuditPage({ searchParams }) {
         <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Details</th><th>IP</th></tr></thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id}><td className="small">{r.created_at.replace("T", " ").slice(0, 16)}</td><td>{r.user_name}</td>
+            <tr key={r.id}><td className="small">{dateTime(r.created_at)}</td><td>{r.user_name}</td>
               <td><span className={`badge ${/failed|locked|refund|cancel|deactivate/.test(r.action) ? "badge-warn" : ""}`}>{r.action}</span></td>
               <td className="small">{r.details}</td><td className="small muted">{r.ip}</td></tr>
           ))}

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
-  const tour = db.prepare("SELECT title, summary FROM tours WHERE slug = ?").get(slug);
+  const tour = db.prepare("SELECT title, summary FROM tours WHERE slug = ? AND active = 1").get(slug);
   return tour ? { title: tour.title, description: tour.summary } : {};
 }
 
@@ -24,7 +24,11 @@ export default async function TourPage({ params }) {
   const tour = db.prepare("SELECT * FROM tours WHERE slug = ? AND active = 1").get(slug);
   if (!tour) notFound();
   const departures = listDepartures({ tourId: tour.id, upcomingOnly: true, openOnly: true });
-  const days = lines(tour.itinerary).map(splitDay).map((d) => ({ title: `${d.title} · ${d.body.split(",")[0]}`, body: d.body }));
+  // "Day 1: Depart Accra, visit X, …" → title "Day 1 · Depart Accra", body "visit X, …" (no repeated text)
+  const days = lines(tour.itinerary).map(splitDay).map((d) => {
+    const [first, ...rest] = d.body.split(",");
+    return { title: `${d.title} · ${first.trim()}`, body: rest.join(",").trim() || first.trim() };
+  });
   const recent = db.prepare(`SELECT COALESCE(SUM(b.travellers), 0) AS n FROM bookings b JOIN departures d ON d.id = b.departure_id
     WHERE d.tour_id = ? AND b.status != 'cancelled' AND b.created_at > datetime('now', '-30 days')`).get(tour.id).n;
   const nextDep = departures.find((d) => d.capacity - d.booked > 0);
@@ -66,7 +70,9 @@ export default async function TourPage({ params }) {
           <section className="card card-pad">
             <h3>Good to know</h3>
             <dl className="kv">
-              <dt>Deposit</dt><dd>{tour.deposit_percent}% to reserve, balance in instalments before departure</dd>
+              {tour.deposit_percent > 0 && tour.deposit_percent < 100
+                ? <><dt>Deposit</dt><dd>{tour.deposit_percent}% to reserve, balance in instalments before departure</dd></>
+                : <><dt>Payment plan</dt><dd>Paid in full when you book</dd></>}
               <dt>Payment</dt><dd>MTN MoMo, Telecel Cash, AirtelTigo Money, Visa / Mastercard</dd>
               <dt>Groups</dt><dd>Private dates available for families, schools and companies. <Link href="/custom-trip">Ask for a quote</Link></dd>
             </dl>
@@ -81,7 +87,12 @@ export default async function TourPage({ params }) {
         </div>
 
         <aside className="card card-pad sticky-aside" id="book">
-          <div className="price" style={{ fontSize: "1.6rem" }}>{money(tour.price)} <span className="muted small">/ person</span></div>
+          {(() => {
+            const open = departures.filter((d) => d.capacity - d.booked > 0).map((d) => d.price);
+            const low = open.length ? Math.min(...open) : tour.price;
+            const varies = open.some((p) => p !== low);
+            return <div className="price" style={{ fontSize: "1.6rem" }}>{varies ? <span className="muted small">from </span> : null}{money(low)} <span className="muted small">/ person</span></div>;
+          })()}
           <BookingWidget departures={departures} depositPercent={tour.deposit_percent} />
         </aside>
       </div>

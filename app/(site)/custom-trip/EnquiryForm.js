@@ -23,7 +23,7 @@ export default function EnquiryForm() {
 
   return (
     <form key={JSON.stringify(v)} action={action} className="card card-pad">
-      {state?.error && <div className="alert alert-error">{state.error}</div>}
+      {state?.error && <div className="alert alert-error" role="alert">{state.error}</div>}
       <div className="hp" aria-hidden="true"><label>Leave this empty<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
       <div className="field">
         <label htmlFor="destination">Where or what kind of trip?</label>

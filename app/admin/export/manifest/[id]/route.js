@@ -9,11 +9,11 @@ export const dynamic = "force-dynamic";
 export async function GET(request, { params }) {
   const user = await currentUser();
   if (!can(user, "data.export") || user.must_change_password) return new Response("Not found", { status: 404 });
-  await audit(user, "export.manifest");
   const { id } = await params;
   const dep = getDeparture(Number(id));
   if (!dep) return new Response("Not found", { status: 404 });
-  const rows = db.prepare(`SELECT tr.name, tr.phone, tr.checked_in, b.ref, c.name AS contact, c.phone AS contact_phone
+  await audit(user, "export.manifest", `${dep.tour_title} ${dep.start_date} (#${dep.id})`);
+  const rows = db.prepare(`SELECT tr.name, tr.phone, tr.checked_in, b.ref, COALESCE(b.contact_name, c.name) AS contact, c.phone AS contact_phone
     FROM travellers tr JOIN bookings b ON b.id = tr.booking_id JOIN customers c ON c.id = b.customer_id
     WHERE b.departure_id = ? AND b.status != 'cancelled' ORDER BY tr.name`).all(dep.id);
   const csv = toCsv(rows, [

@@ -20,8 +20,8 @@ export default async function ResetPage({ searchParams }) {
         </>
       ) : (
         <div className="card card-pad">
-          <h1 style={{ fontSize: "1.3rem" }}>This link has expired</h1>
-          <p className="muted">Reset links work once and only for 30 minutes.</p>
+          <h1 style={{ fontSize: "1.3rem" }}>{t ? "This link has expired" : "Reset link missing"}</h1>
+          <p className="muted">{t ? "Reset links work once and only for 30 minutes." : "Open the link from your email, or ask for a new one."}</p>
           <Link className="btn" href="/admin/forgot">Send a new link</Link>
         </div>
       )}

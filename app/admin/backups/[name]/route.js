@@ -11,7 +11,7 @@ export async function GET(request, { params }) {
   const user = await currentUser();
   if (!can(user, "backups.manage") || user.must_change_password) return new Response("Not found", { status: 404 });
   const { name } = await params;
-  if (!/^tourflow-[\d-]+\.db$/.test(name)) return new Response("Not found", { status: 404 });
+  if (!/^tourflow-(daily-|manual-)?[\d-]+\.db$/.test(name)) return new Response("Not found", { status: 404 });
   const file = path.join(BACKUP_DIR, name);
   if (!fs.existsSync(file)) return new Response("Not found", { status: 404 });
   await audit(user, "backup.download", name);

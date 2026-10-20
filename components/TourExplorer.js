@@ -5,14 +5,15 @@ import TourCard from "./TourCard";
 
 const SORTS = {
   soonest: (a, b) => (a.next_date || "9999").localeCompare(b.next_date || "9999"),
-  priceAsc: (a, b) => a.price - b.price,
-  priceDesc: (a, b) => b.price - a.price,
+  priceAsc: (a, b) => (a.from_price ?? a.price) - (b.from_price ?? b.price),
+  priceDesc: (a, b) => (b.from_price ?? b.price) - (a.from_price ?? a.price),
   shortest: (a, b) => a.duration_days - b.duration_days,
 };
 
 export default function TourExplorer({ tours, categories }) {
   // Round the slider's top up to a whole step so the most expensive tour is always reachable.
-  const maxPrice = Math.ceil(Math.max(...tours.map((t) => t.price), 5000) / 5000) * 5000;
+  const priceOf = (t) => t.from_price ?? t.price;
+  const maxPrice = Math.ceil(Math.max(...tours.map(priceOf), 5000) / 5000) * 5000;
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("All");
   const [sort, setSort] = useState("soonest");
@@ -20,7 +21,11 @@ export default function TourExplorer({ tours, categories }) {
   const [availableOnly, setAvailableOnly] = useState(false);
   const [saved, setSaved] = useState([]);
   useEffect(() => {
-    const sync = () => setSaved(readSaved());
+    const sync = () => {
+      const list = readSaved();
+      setSaved(list);
+      if (!list.length) setCat((c) => (c === "♥ Saved" ? "All" : c)); // don't leave an empty "Saved" filter on
+    };
     sync();
     window.addEventListener("tf-saved", sync);
     return () => window.removeEventListener("tf-saved", sync);
@@ -30,7 +35,7 @@ export default function TourExplorer({ tours, categories }) {
     const needle = q.trim().toLowerCase();
     return tours
       .filter((t) => cat === "All" || (cat === "♥ Saved" ? saved.includes(t.slug) : t.category === cat))
-      .filter((t) => t.price <= budget)
+      .filter((t) => priceOf(t) <= budget)
       .filter((t) => !availableOnly || t.seats_left > 0)
       .filter((t) => !needle || [t.title, t.destination, t.summary, t.category].join(" ").toLowerCase().includes(needle))
       .sort(SORTS[sort]);
@@ -60,7 +65,7 @@ export default function TourExplorer({ tours, categories }) {
           <label className="inline-field">
             <span>Max budget</span>
             <input type="range" min={0} max={maxPrice} step={5000} value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
-            <strong>GH₵ {(budget / 100).toLocaleString()}</strong>
+            <strong>GH₵ {(budget / 100).toLocaleString("en-GH")}</strong>
           </label>
           <label className="inline-field">
             <span>Sort</span>
@@ -78,9 +83,9 @@ export default function TourExplorer({ tours, categories }) {
       </div>
 
       <div className="spread" style={{ margin: "28px 0 16px" }}>
-        <div className="chips" role="tablist">
+        <div className="chips" role="group" aria-label="Filter by category">
           {["All", ...categories, ...(saved.length ? ["♥ Saved"] : [])].map((c) => (
-            <button key={c} role="tab" aria-selected={cat === c} className={`chip ${cat === c ? "chip-on" : ""}`} onClick={() => setCat(c)}>{c}</button>
+            <button key={c} type="button" aria-pressed={cat === c} className={`chip ${cat === c ? "chip-on" : ""}`} onClick={() => setCat(c)}>{c}</button>
           ))}
         </div>
         <span className="muted small">{shown.length} of {tours.length} tours</span>

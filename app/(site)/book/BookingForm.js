@@ -4,11 +4,14 @@ import { submitBooking } from "./actions";
 
 const fmt = (p) => "GH₵ " + (p / 100).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const STEPS = ["Travellers", "Contact", "Payment"];
+const MAX_ONLINE_GROUP = 30; // bigger groups use the custom trip form
 
 export default function BookingForm({ canPayOnline = true, departureId, price, depositPercent, seatsLeft, initialCount = 1, tourTitle, dates }) {
   const [state, action, pending] = useActionState(submitBooking, null);
   const [step, setStep] = useState(0);
-  const [count, setCount] = useState(Math.min(Math.max(1, initialCount), seatsLeft));
+  const maxPax = Math.min(seatsLeft, MAX_ONLINE_GROUP);
+  const [count, setCount] = useState(Math.min(Math.max(1, Math.floor(initialCount) || 1), maxPax));
+  const hasDeposit = depositPercent > 0 && depositPercent < 100;
   const [plan, setPlan] = useState("full");
   const [names, setNames] = useState([]);
   const [contact, setContact] = useState({ name: "", phone: "", email: "" });
@@ -62,9 +65,9 @@ export default function BookingForm({ canPayOnline = true, departureId, price, d
           <div className="stepper">
             <button type="button" onClick={() => setCount(Math.max(1, count - 1))} disabled={count <= 1} aria-label="Fewer travellers">−</button>
             <output aria-live="polite">{count}</output>
-            <button type="button" onClick={() => setCount(Math.min(seatsLeft, count + 1))} disabled={count >= seatsLeft} aria-label="More travellers">+</button>
+            <button type="button" onClick={() => setCount(Math.min(maxPax, count + 1))} disabled={count >= maxPax} aria-label="More travellers">+</button>
           </div>
-          <span className="muted small">{seatsLeft} seat{seatsLeft > 1 ? "s" : ""} available</span>
+          <span className="muted small">{seatsLeft} seat{seatsLeft > 1 ? "s" : ""} available{count >= MAX_ONLINE_GROUP ? <> · bigger group? <a href="/custom-trip">Ask for a group quote</a></> : null}</span>
         </div>
         {Array.from({ length: count }, (_, i) => (
           <div className="form-grid traveller-row" key={i}>
@@ -106,10 +109,10 @@ export default function BookingForm({ canPayOnline = true, departureId, price, d
             <input type="radio" name="plan" value="full" checked={plan === "full"} onChange={() => setPlan("full")} />
             <span>Pay in full<br /><strong>{fmt(total)}</strong><br /><span className="muted small">Nothing more to pay later</span></span>
           </label>
-          <label className={`radio-card ${plan === "deposit" ? "radio-on" : ""}`}>
+          {hasDeposit && <label className={`radio-card ${plan === "deposit" ? "radio-on" : ""}`}>
             <input type="radio" name="plan" value="deposit" checked={plan === "deposit"} onChange={() => setPlan("deposit")} />
             <span>Pay {depositPercent}% deposit<br /><strong>{fmt(deposit)}</strong><br /><span className="muted small">Pay {fmt(total - deposit)} in instalments before the trip</span></span>
-          </label>
+          </label>}
         </div>
         <div className="field"><label htmlFor="notes">Special requests (optional)</label><textarea id="notes" name="notes" maxLength={1000} placeholder="Dietary needs, pickup location, room sharing…" /></div>
 

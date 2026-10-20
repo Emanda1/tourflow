@@ -2,7 +2,7 @@
 // Every action here checks the signed-in staff member's permission first.
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { db, getBooking, getDeparture } from "@/lib/db";
+import { db, getBooking, getDeparture, refreshBookingStatus, NET_AMOUNT } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { createBooking, recordPayment, recordRefund, BookingError, bookingLink } from "@/lib/bookings";
 import { sendSms } from "@/lib/notify";
@@ -17,20 +17,25 @@ const METHODS = ["momo", "cash", "bank", "card"];
 
 /* ---------- Tours ---------- */
 
-export async function saveTour(formData) {
+export async function saveTour(prev, formData) {
   const user = await requireUser("tours.edit");
   const id = int(formData, "id", { min: 1 });
-  const back = id ? `/admin/tours/${id}` : "/admin/tours/new";
+  const bad = (error) => ({ error, values: formValues(formData) });
   const title = text(formData, "title", { max: 120 });
   const price = toPesewas(formData.get("price"));
-  if (!title) fail(back, "Please give the tour a name.");
-  if (price <= 0 || price > 100_000_000) fail(back, "Please enter a valid price.");
+  if (!title) return bad("Please give the tour a name.");
+  if (!text(formData, "destination", { max: 120 })) return bad("Please enter the destination.");
+  if (price <= 0 || price > 100_000_000) return bad("Please enter a valid price.");
+  const typedImage = text(formData, "image_url", { max: 500 });
+  if (typedImage && !safeImageUrl(typedImage)) return bad("Image links must start with https:// and can't contain spaces, brackets or quotes. Or upload a photo instead.");
 
-  let image = safeImageUrl(text(formData, "image_url", { max: 500 }));
+  // Keep the current cover unless a new photo/link is given or "remove" is ticked.
+  const existing = id ? db.prepare("SELECT image_url FROM tours WHERE id = ?").get(id)?.image_url ?? null : null;
+  let image = typedImage ? safeImageUrl(typedImage) : formData.get("remove_image") ? null : existing;
   try {
     image = (await saveImage(formData.get("cover"))) || image;
   } catch (e) {
-    if (e instanceof UploadError) fail(back, e.message);
+    if (e instanceof UploadError) return bad(e.message);
     throw e;
   }
   const data = {
@@ -65,7 +70,7 @@ export async function saveTour(formData) {
         VALUES (@title,@slug,@destination,@category,@duration_days,@price,@deposit_percent,@summary,@description,@itinerary,@inclusions,@exclusions,@image_url,@active)`).run(data).lastInsertRowid;
     }
   } catch (e) {
-    if (String(e.message).includes("UNIQUE")) fail(back, "Another tour already uses that web address. Change the slug.");
+    if (String(e.message).includes("UNIQUE")) return bad("Another tour already uses that web address. Change the slug.");
     throw e;
   }
   await audit(user, id ? "tour.update" : "tour.create", `${title} (#${tourId}) price ${money(price)}`);
@@ -75,28 +80,29 @@ export async function saveTour(formData) {
 
 /* ---------- Departures ---------- */
 
-export async function saveDeparture(formData) {
+export async function saveDeparture(prev, formData) {
   const user = await requireUser("trips.edit");
   const id = int(formData, "id", { min: 1 });
   const tourId = int(formData, "tour_id", { min: 1 });
   const tour = db.prepare("SELECT id, title, duration_days FROM tours WHERE id = ?").get(tourId);
-  const back = id ? `/admin/departures/${id}` : `/admin/tours/${tourId}`;
-  if (!tour) fail("/admin/tours", "Tour not found.");
+  const bad = (error) => ({ error, values: formValues(formData) });
+  if (!tour) return bad("Tour not found.");
   const start = text(formData, "start_date", { max: 10 });
   let end = text(formData, "end_date", { max: 10 });
-  if (!isDate(start)) fail(back, "Please choose a valid start date.");
+  if (!isDate(start)) return bad("Please choose a valid start date.");
+  const old = id ? getDeparture(id) : null;
+  if (id && !old) return bad("This trip no longer exists.");
+  // Moving the start date moves the end date with it, unless the end date was changed too.
+  if (old && start !== old.start_date && end === old.end_date) end = "";
   if (!end) {
     const d = new Date(start + "T00:00:00Z");
     d.setUTCDate(d.getUTCDate() + tour.duration_days - 1);
     end = d.toISOString().slice(0, 10);
   }
-  if (!isDate(end) || end < start) fail(back, "The end date must be on or after the start date.");
+  if (!isDate(end) || end < start) return bad("The end date must be on or after the start date.");
   const status = text(formData, "status", { max: 20 });
   const capacity = int(formData, "capacity", { min: 1, max: 1000, fallback: 20 });
-  if (id) {
-    const booked = getDeparture(id)?.booked ?? 0;
-    if (capacity < booked) fail(back, `There are already ${booked} travellers booked. Seats can't be fewer than that.`);
-  }
+  if (old && capacity < old.booked) return bad(`There are already ${old.booked} travellers booked. Seats can't be fewer than that.`);
   const staffId = (k) => { const v = int(formData, k, { min: 1 }); return v && db.prepare("SELECT 1 FROM staff WHERE id = ?").get(v) ? v : null; };
   const vehicleId = int(formData, "vehicle_id", { min: 1 });
   const data = {
@@ -114,6 +120,12 @@ export async function saveDeparture(formData) {
     notes: text(formData, "notes", { max: 3000 }),
   };
   let depId = id;
+  let cancelledBookings = [];
+  if (old && data.status === "cancelled" && old.status !== "cancelled") {
+    cancelledBookings = db.prepare(`SELECT b.id, b.ref, c.phone FROM bookings b JOIN customers c ON c.id = b.customer_id
+      WHERE b.departure_id = ? AND b.status != 'cancelled'`).all(id);
+    db.prepare("UPDATE bookings SET status = 'cancelled', cancel_reason = 'Trip cancelled' WHERE departure_id = ? AND status != 'cancelled'").run(id);
+  }
   if (id) {
     db.prepare(`UPDATE departures SET start_date=@start_date, end_date=@end_date, capacity=@capacity, price_override=@price_override,
       status=@status, guide_id=@guide_id, driver_id=@driver_id, vehicle_id=@vehicle_id, pickup_point=@pickup_point,
@@ -122,7 +134,10 @@ export async function saveDeparture(formData) {
     depId = db.prepare(`INSERT INTO departures (tour_id,start_date,end_date,capacity,price_override,status,guide_id,driver_id,vehicle_id,pickup_point,pickup_time,notes)
       VALUES (@tour_id,@start_date,@end_date,@capacity,@price_override,@status,@guide_id,@driver_id,@vehicle_id,@pickup_point,@pickup_time,@notes)`).run(data).lastInsertRowid;
   }
-  await audit(user, id ? "trip.update" : "trip.create", `${tour.title} ${start} (#${depId}) status ${data.status}`);
+  await audit(user, id ? "trip.update" : "trip.create", `${tour.title} ${start} (#${depId}) status ${data.status}${cancelledBookings.length ? `, ${cancelledBookings.length} booking(s) cancelled` : ""}`);
+  for (const b of cancelledBookings) {
+    await sendSms({ to: b.phone, bookingId: b.id, message: `We're sorry: ${tour.title} on ${date(start)} has been cancelled. Booking ${b.ref}. We will call you about a new date or a refund. - ${company.name}` });
+  }
   revalidatePath("/", "layout");
   redirect(`/admin/departures/${depId}?saved=1`);
 }
@@ -139,8 +154,10 @@ export async function messageDeparture(formData) {
   const message = text(formData, "message", { max: 480 });
   if (!dep) redirect("/admin/departures");
   if (!message) fail(`/admin/departures/${dep.id}`, "Write a message first.");
-  const rows = db.prepare(`SELECT b.id, c.phone FROM bookings b JOIN customers c ON c.id = b.customer_id
-    WHERE b.departure_id = ? AND b.status = 'confirmed'`).all(dep.id);
+  // Everyone still booked (confirmed or awaiting payment), one SMS per phone number.
+  const rows = db.prepare(`SELECT MIN(b.id) AS id, c.phone FROM bookings b JOIN customers c ON c.id = b.customer_id
+    WHERE b.departure_id = ? AND b.status != 'cancelled' GROUP BY c.phone`).all(dep.id);
+  if (!rows.length) fail(`/admin/departures/${dep.id}`, "There's nobody booked on this trip to message.");
   for (const r of rows) await sendSms({ to: r.phone, message, bookingId: r.id });
   await audit(user, "trip.message", `${dep.tour_title} ${dep.start_date}: ${rows.length} SMS`);
   redirect(`/admin/departures/${dep.id}?sent=${rows.length}`);
@@ -154,6 +171,10 @@ export async function createManualBooking(prev, formData) {
   const name = text(formData, "name", { max: 120 });
   const source = text(formData, "source", { max: 20 });
   const method = text(formData, "method", { max: 10 });
+  const paidNow = toPesewas(formData.get("paid_now"));
+  const depForCheck = getDeparture(int(formData, "departure_id", { min: 1 }));
+  const expectedTotal = depForCheck ? depForCheck.price * Math.max(1, names.length || 1) : 0;
+  if (depForCheck && paidNow > expectedTotal) return { error: `Amount paid can't be more than the total of ${money(expectedTotal)}.`, values: formValues(formData) };
   let booking;
   try {
     booking = createBooking({
@@ -166,9 +187,8 @@ export async function createManualBooking(prev, formData) {
       source: ["walk-in", "phone", "agent"].includes(source) ? source : "walk-in",
       notes: text(formData, "notes", { max: 1000 }),
     });
-    const paid = toPesewas(formData.get("paid_now"));
-    if (paid > 0) {
-      await recordPayment({ bookingId: booking.id, amount: Math.min(paid, booking.total), method: METHODS.includes(method) ? method : "cash", note: "Recorded at booking", recordedBy: user.name });
+    if (paidNow > 0) {
+      await recordPayment({ bookingId: booking.id, amount: Math.min(paidNow, booking.total), method: METHODS.includes(method) ? method : "cash", note: "Recorded at booking", recordedBy: user.name });
     }
   } catch (e) {
     if (e instanceof BookingError) return { error: e.message, values: formValues(formData) };
@@ -218,12 +238,16 @@ export async function setBookingStatus(formData) {
   if (!b || !["pending", "confirmed", "cancelled"].includes(status)) redirect("/admin/bookings");
   const back = `/admin/bookings/${id}`;
   if (status !== "cancelled" && b.status === "cancelled") {
-    // Restoring takes seats again, so check there is still room.
+    // Restoring takes seats again, so check the trip is still running and has room.
     const dep = getDeparture(b.departure_id);
+    if (dep.status !== "open") fail(back, `This trip is ${dep.status}. Reopen the trip first, or book the customer on another date.`);
     if (dep.booked + b.travellers > dep.capacity) fail(back, `Not enough free seats on this trip to restore the booking (${dep.capacity - dep.booked} left).`);
   }
   const reason = status === "cancelled" ? text(formData, "reason", { max: 200 }) || "Cancelled by staff" : null;
-  db.prepare("UPDATE bookings SET status = ?, cancel_reason = ? WHERE id = ?").run(status, reason, id);
+  // A restored booking becomes a staff booking, so the unpaid-booking timer never cancels it again.
+  const restoring = status !== "cancelled" && b.status === "cancelled";
+  db.prepare(`UPDATE bookings SET status = ?, cancel_reason = ?${restoring ? ", source = CASE WHEN source = 'website' THEN 'phone' ELSE source END" : ""} WHERE id = ?`).run(status, reason, id);
+  if (restoring) refreshBookingStatus(id); // already paid the deposit → back to confirmed
   await audit(user, `booking.${status}`, `${b.ref}${reason ? `: ${reason}` : ""}`);
   if (status === "cancelled") {
     await sendSms({ to: b.customer_phone, bookingId: id, message: `Your booking ${b.ref} for ${b.tour_title} on ${date(b.start_date)} has been cancelled. Call ${company.phone} for help. - ${company.name}` });
@@ -257,6 +281,7 @@ export async function addStaff(formData) {
   db.prepare("INSERT INTO staff (name, role, phone) VALUES (?,?,?)").run(name, role === "Driver" ? "Driver" : "Guide", phone);
   await audit(user, "team.add", `${name} (${role})`);
   revalidatePath("/admin/team");
+  redirect("/admin/team?saved=1");
 }
 
 export async function addVehicle(formData) {
@@ -266,6 +291,46 @@ export async function addVehicle(formData) {
   db.prepare("INSERT INTO vehicles (name, plate, seats) VALUES (?,?,?)").run(name, text(formData, "plate", { max: 20 }), int(formData, "seats", { min: 1, max: 100, fallback: 14 }));
   await audit(user, "vehicle.add", name);
   revalidatePath("/admin/team");
+  redirect("/admin/team?saved=1");
+}
+
+export async function updateTeamMember(formData) {
+  const user = await requireUser("team.manage");
+  const id = int(formData, "id", { min: 1 });
+  const row = db.prepare("SELECT * FROM staff WHERE id = ?").get(id);
+  if (!row) redirect("/admin/team");
+  if (formData.get("toggle")) {
+    db.prepare("UPDATE staff SET active = 1 - active WHERE id = ?").run(id);
+    await audit(user, row.active ? "team.deactivate" : "team.activate", row.name);
+  } else {
+    const name = text(formData, "name", { max: 120 });
+    const phone = text(formData, "phone", { max: 30 });
+    if (!name) fail("/admin/team", "Enter a name.");
+    if (phone && !isPhone(phone)) fail("/admin/team", "That phone number doesn't look right.");
+    const role = text(formData, "role", { max: 20 }) === "Driver" ? "Driver" : "Guide";
+    db.prepare("UPDATE staff SET name = ?, phone = ?, role = ? WHERE id = ?").run(name, phone, role, id);
+    await audit(user, "team.update", `${row.name} → ${name}`);
+  }
+  revalidatePath("/admin/team");
+  redirect("/admin/team?saved=1");
+}
+
+export async function updateVehicle(formData) {
+  const user = await requireUser("team.manage");
+  const id = int(formData, "id", { min: 1 });
+  const row = db.prepare("SELECT * FROM vehicles WHERE id = ?").get(id);
+  if (!row) redirect("/admin/team");
+  if (formData.get("toggle")) {
+    db.prepare("UPDATE vehicles SET active = 1 - active WHERE id = ?").run(id);
+    await audit(user, row.active ? "vehicle.deactivate" : "vehicle.activate", row.name);
+  } else {
+    const name = text(formData, "name", { max: 80 });
+    if (!name) fail("/admin/team", "Enter the vehicle name.");
+    db.prepare("UPDATE vehicles SET name = ?, plate = ?, seats = ? WHERE id = ?").run(name, text(formData, "plate", { max: 20 }), int(formData, "seats", { min: 1, max: 100, fallback: row.seats }), id);
+    await audit(user, "vehicle.update", name);
+  }
+  revalidatePath("/admin/team");
+  redirect("/admin/team?saved=1");
 }
 
 /* ---------- Trip requests ---------- */

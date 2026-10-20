@@ -9,6 +9,7 @@ export default function LiveUpdates() {
   const router = useRouter();
   const last = useRef(null);
   const [notes, setNotes] = useState([]);
+  const [watching, setWatching] = useState(false); // only show "Live updates on" for staff who receive some
 
   useEffect(() => {
     let stop = false;
@@ -17,6 +18,7 @@ export default function LiveUpdates() {
         const r = await fetch("/admin/pulse", { cache: "no-store" });
         if (!r.ok) return;
         const now = await r.json();
+        setWatching(Object.keys(now).length > 0);
         const prev = last.current;
         last.current = now;
         if (!prev) return;
@@ -35,6 +37,7 @@ export default function LiveUpdates() {
     return () => { stop = true; clearInterval(t); };
   }, [router]);
 
+  if (!watching) return null;
   if (!notes.length) return <span className="small" style={{ padding: "0 12px", opacity: .75 }}><span className="live-dot" />Live updates on</span>;
   return (
     <>

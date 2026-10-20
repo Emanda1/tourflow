@@ -6,7 +6,8 @@ export default function ShareButton({ title }) {
   async function share() {
     const url = window.location.href;
     if (navigator.share) {
-      try { await navigator.share({ title, url }); return; } catch { /* cancelled */ }
+      try { await navigator.share({ title, url }); } catch { /* the customer closed the share sheet */ }
+      return;
     }
     try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {}
   }

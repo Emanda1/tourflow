@@ -29,7 +29,7 @@ export async function login(prev, formData) {
   const ip = await clientIp();
   const email = text(formData, "email", { max: 160 }).toLowerCase();
   const password = String(formData.get("password") || "").slice(0, 200);
-  const generic = { error: "Email or password is incorrect, or the account is temporarily locked. Wait 15 minutes or ask the owner.", values: formValues(formData) };
+  const generic = { error: "Email or password is incorrect, or the account is locked for 15 minutes after too many tries. Use \"Forgot your password?\" below if you're stuck.", values: formValues(formData) };
   if (!rateLimit(`login-ip:${ip}`, 20, 15 * MINUTE)) return generic;
 
   // Always run the password check, so the reply time doesn't reveal whether an account exists.
@@ -69,7 +69,8 @@ export async function requestPasswordReset(prev, formData) {
   const link = `${appUrl}/admin/reset?t=${createResetToken(user.id, ip)}`;
   await audit(user, "password.reset_requested", email);
   if (emailConfigured()) {
-    await sendPasswordResetEmail(user, link);
+    const sent = await sendPasswordResetEmail(user, link);
+    if (sent !== "sent") await audit(user, "password.reset_email_failed", email); // owner can see this in the activity log
   } else {
     // Development only (no email set up): print the link in the terminal running the app.
     console.log(`\n[password reset] Link for ${email} (valid 30 minutes):\n${link}\n`);
@@ -86,8 +87,9 @@ export async function resetPassword(prev, formData) {
   const problem = passwordProblem(pw, { name: user.name, email: user.email });
   if (problem) return { error: problem };
   if (pw !== formData.get("confirm")) return { error: "The two passwords don't match." };
-  db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0, failed_logins = 0, locked_until = NULL WHERE id = ?").run(await hashPassword(pw), user.id);
-  markResetUsed(user.reset_id);
+  const hash = await hashPassword(pw);
+  if (!markResetUsed(user.reset_id)) return { error: "This reset link was already used. Ask for a new one." };
+  db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0, failed_logins = 0, locked_until = NULL WHERE id = ?").run(hash, user.id);
   clearAllFailures(user.email);
   destroyAllSessions(user.id);
   await audit({ id: user.id, name: user.name }, "password.reset", user.email);
@@ -147,6 +149,7 @@ export async function changePassword(prev, formData) {
   destroyAllSessions(user.id); // sign out everywhere else
   await createSession(user.id);
   await audit(user, "password.change");
+  if (row.must_change_password) redirect("/admin?welcome=1"); // first sign-in done: straight to the dashboard
   return { ok: "Password changed. Other devices have been signed out." };
 }
 
@@ -161,7 +164,7 @@ export async function createUser(prev, formData) {
   if (!name || !isEmail(email)) return { error: "Enter a name and a valid email.", values: formValues(formData) };
   if (!ROLES[role]) return { error: "Choose a role.", values: formValues(formData) };
   const problem = passwordProblem(password, { name, email });
-  if (problem) return { error: `Temporary password: ${problem}` };
+  if (problem) return { error: `Temporary password: ${problem}`, values: formValues(formData) };
   try {
     db.prepare("INSERT INTO users (name, email, password_hash, role, must_change_password) VALUES (?,?,?,?,1)").run(name, email, await hashPassword(password), role);
   } catch (e) {
@@ -181,6 +184,9 @@ export async function updateUser(formData) {
   const action = text(formData, "action", { max: 20 });
   const owners = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'owner' AND active = 1").get().n;
   const isLastOwner = target.role === "owner" && target.active && owners <= 1;
+  if (id === owner.id && ["role", "reset", "signout", "deactivate"].includes(action)) {
+    fail("/admin/staff", "To change your own password, use My account. You can't change your own role or deactivate yourself.");
+  }
 
   if (action === "role") {
     const role = text(formData, "role", { max: 20 });
@@ -269,7 +275,7 @@ export async function sendTestSms(formData) {
 
 export async function backupNow() {
   const owner = await requireUser("backups.manage");
-  const file = await runBackup();
+  const file = await runBackup({ manual: true });
   await audit(owner, "backup.create", file);
   redirect("/admin/backups?done=1");
 }

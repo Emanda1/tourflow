@@ -8,7 +8,8 @@ and what the operator is still responsible for.
 **Staff access**
 - Every staff member has their own account (no shared password). Passwords are hashed with scrypt and a unique salt; they are never stored or logged in plain text.
 - Password rules: at least 10 characters, common or obvious passwords refused, names/emails refused.
-- New accounts and resets use a temporary password that must be changed at first sign-in.
+- New accounts and owner resets use a temporary password that must be changed at first sign-in.
+- "Forgot your password?" emails a one-time reset link (random 256-bit token, stored only as a hash, valid 30 minutes, cancelled by any newer link). Using it clears lockouts and signs the account out everywhere. The reply is the same whether or not the email exists.
 - 5 wrong passwords lock that account **from that connection** for 15 minutes (so a stranger can't lock out real staff); sign-in is also rate-limited per IP. Every failed sign-in gets the same message and takes the same time, whether or not the email exists. Password hashing runs asynchronously so sign-in attempts can't stall the site.
 - Sessions are random 256-bit tokens stored only as a SHA-256 hash, in an `HttpOnly`, `SameSite=Lax`, `Secure` (`__Host-` prefixed) cookie, expiring after 12 hours. Changing a password, changing a role or deactivating an account signs that person out everywhere.
 - Four roles (Owner, Manager, Sales, Operations). Permission is checked on the server for **every** admin page, action and download, not just hidden in the menu. Operations staff can't see bookings, payments, revenue or balances; only trips, manifests and check-in.
@@ -54,7 +55,7 @@ and what the operator is still responsible for.
 - An independent security review was carried out before release; its 13 findings (2 high, 4 medium, 7 low, none critical) were fixed and retested.
 
 ## Known limits (by design for this version)
-- Rate limits and sign-in lockouts are kept in memory, so they reset when the app restarts and assume a single server process. For multiple servers, move them to Redis.
+- Sign-in lockouts are stored in the database (so a reset or the owner's "Unlock sign-in" clears them at once). Other rate limits are kept in memory, so they reset when the app restarts and assume a single server process. For multiple servers, move them to Redis.
 - Booking links don't expire. Customers should treat them like a password.
 - No CAPTCHA on public forms yet; add one if bots start abusing bookings or trip requests.
 - The Content-Security-Policy allows inline scripts, which Next.js needs without extra configuration. Other headers and React's escaping still protect against injected content.

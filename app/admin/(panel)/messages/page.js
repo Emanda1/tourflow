@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { date } from "@/lib/format";
+import { dateTime } from "@/lib/format";
 import Link from "next/link";
 
 export default async function MessagesPage() {
@@ -17,7 +17,7 @@ export default async function MessagesPage() {
         <tbody>
           {rows.map((m) => (
             <tr key={m.id}>
-              <td className="small">{date(m.created_at)}</td><td>{m.recipient}</td>
+              <td className="small">{dateTime(m.created_at)}</td><td>{m.recipient}</td>
               <td>{m.ref ? <Link href={`/admin/bookings/${m.booking_id}`}>{m.ref}</Link> : "—"}</td>
               <td className="small">{m.message}</td><td><span className={`badge badge-${m.status}`}>{m.status}</span>{m.error && <div className="small muted">{m.error}</div>}</td>
             </tr>

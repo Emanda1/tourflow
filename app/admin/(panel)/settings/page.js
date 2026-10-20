@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { company, appUrl, paystackEnabled, demoPaymentsAllowed } from "@/lib/config";
+import { getSetting } from "@/lib/db";
 import Toast from "@/components/Toast";
 import { saveSettings, sendTestSms } from "../../account-actions";
 
@@ -7,6 +8,8 @@ export default async function SettingsPage({ searchParams }) {
   await requireUser("settings.manage");
   const sp = await searchParams;
   const sms = Boolean(process.env.ARKESEL_API_KEY);
+  // Show only what the owner has actually saved; the built-in defaults appear as grey hints.
+  const saved = (k) => getSetting(k) || "";
   const email = Boolean(process.env.SMTP_HOST);
   const status = (ok, on, off) => <span className={`badge ${ok ? "badge-ok" : "badge-warn"}`}>{ok ? on : off}</span>;
   return (
@@ -20,12 +23,12 @@ export default async function SettingsPage({ searchParams }) {
         <h2>Company details</h2>
         <p className="small muted">Shown on the website, receipts, emails and SMS.</p>
         <div className="form-grid">
-          <div className="field"><label htmlFor="cn">Company name</label><input id="cn" name="company_name" defaultValue={company.name} required maxLength={80} /></div>
-          <div className="field"><label htmlFor="cp">Phone</label><input id="cp" name="company_phone" defaultValue={company.phone} maxLength={30} /></div>
-          <div className="field"><label htmlFor="cw">WhatsApp number</label><input id="cw" name="company_whatsapp" defaultValue={company.whatsapp} maxLength={30} /></div>
-          <div className="field"><label htmlFor="ce">Email</label><input id="ce" name="company_email" type="email" defaultValue={company.email} maxLength={160} /></div>
+          <div className="field"><label htmlFor="cn">Company name</label><input id="cn" name="company_name" defaultValue={saved("company_name") || company.name} required maxLength={80} /></div>
+          <div className="field"><label htmlFor="cp">Phone</label><input id="cp" name="company_phone" defaultValue={saved("company_phone")} placeholder="024 123 4567" maxLength={30} inputMode="tel" /></div>
+          <div className="field"><label htmlFor="cw">WhatsApp number</label><input id="cw" name="company_whatsapp" defaultValue={saved("company_whatsapp")} placeholder="Same as phone if empty" maxLength={30} inputMode="tel" /></div>
+          <div className="field"><label htmlFor="ce">Email</label><input id="ce" name="company_email" type="email" defaultValue={saved("company_email")} placeholder="bookings@yourcompany.com" maxLength={160} /></div>
         </div>
-        <div className="field"><label htmlFor="ca">Address</label><input id="ca" name="company_address" defaultValue={company.address} maxLength={200} /></div>
+        <div className="field"><label htmlFor="ca">Address</label><input id="ca" name="company_address" defaultValue={saved("company_address")} placeholder="e.g. 12 Oxford Street, Osu, Accra" maxLength={200} /></div>
         <div className="form-grid">
           <div className="field">
             <label htmlFor="logo">Logo (JPG, PNG or WebP)</label>
@@ -35,7 +38,7 @@ export default async function SettingsPage({ searchParams }) {
           </div>
           <div className="field"><label htmlFor="bc">Brand colour</label><input id="bc" name="brand_color" type="color" defaultValue={company.brandColor || "#0f766e"} style={{ height: 44 }} /></div>
         </div>
-        <div className="field"><label htmlFor="cpol">Cancellation & refund policy</label><textarea id="cpol" name="cancellation_policy" defaultValue={company.cancellationPolicy} maxLength={2000} rows={4} /></div>
+        <div className="field"><label htmlFor="cpol">Cancellation & refund policy</label><textarea id="cpol" name="cancellation_policy" defaultValue={saved("cancellation_policy") || company.cancellationPolicy} maxLength={2000} rows={4} /></div>
         <button className="btn">Save settings</button>
       </form>
 

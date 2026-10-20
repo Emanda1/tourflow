@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { listBackups } from "@/lib/backup";
-import { date } from "@/lib/format";
+import { dateTime } from "@/lib/format";
 import Toast from "@/components/Toast";
 import { backupNow } from "../../account-actions";
 
@@ -17,18 +17,18 @@ export default async function BackupsPage({ searchParams }) {
       </div>
       <Toast message={sp.done ? "Backup created" : null} />
       <div className="alert alert-info">
-        A backup of all bookings, payments and settings is made automatically every day, and the last {process.env.BACKUP_KEEP || 14} are kept on the server.
+        A backup of all bookings, payments, staff and settings is made automatically every day (the last {process.env.BACKUP_KEEP || 14} are kept), and tour photos and the logo are copied into the backups folder too.
         <strong> Download one at least once a week and keep it somewhere safe</strong> (e.g. Google Drive), so you're protected even if the server is lost.
       </div>
       <section className="card table-wrap">
         <table>
-          <thead><tr><th>Backup</th><th>Created</th><th>Size</th><th></th></tr></thead>
+          <thead><tr><th>Backup</th><th>Type</th><th>Created</th><th>Size</th><th></th></tr></thead>
           <tbody>
             {backups.map((b) => (
-              <tr key={b.name}><td>{b.name}</td><td>{date(new Date(b.mtimeMs).toISOString())} {new Date(b.mtimeMs).toTimeString().slice(0, 5)}</td><td>{size(b.size)}</td>
+              <tr key={b.name}><td>{b.name}</td><td>{b.kind === "manual" ? "Manual" : "Daily"}</td><td>{dateTime(new Date(b.mtimeMs).toISOString())}</td><td>{size(b.size)}</td>
                 <td><a className="btn btn-secondary btn-sm" href={`/admin/backups/${b.name}`}>Download</a></td></tr>
             ))}
-            {backups.length === 0 && <tr><td colSpan={4} className="muted">No backups yet. Click "Back up now".</td></tr>}
+            {backups.length === 0 && <tr><td colSpan={5} className="muted">No backups yet. Click "Back up now".</td></tr>}
           </tbody>
         </table>
       </section>

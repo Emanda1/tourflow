@@ -3,7 +3,7 @@ import { can } from "@/lib/permissions";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db, getBooking } from "@/lib/db";
-import { money, date, dateRange } from "@/lib/format";
+import { money, date, dateRange, statusLabel, paymentLabel } from "@/lib/format";
 import Toast from "@/components/Toast";
 import { addPayment, addRefund, setBookingStatus, sendReminder } from "../../../actions";
 
@@ -20,7 +20,7 @@ export default async function BookingDetail({ params, searchParams }) {
   return (
     <div className="stack">
       <Link href="/admin/bookings" className="small">← All bookings</Link>
-      <Toast message={sp.created ? "Booking created" : sp.paid ? "Payment recorded and customer notified" : sp.reminded ? "Reminder sent" : sp.refunded ? "Refund recorded" : null} />
+      <Toast message={sp.created ? "Booking created" : sp.paid ? (process.env.ARKESEL_API_KEY ? "Payment recorded. Customer notified by SMS" : "Payment recorded") : sp.reminded ? (process.env.ARKESEL_API_KEY ? "Reminder sent" : "Reminder logged (SMS is not set up yet)") : sp.refunded ? "Refund recorded" : null} />
       {sp.error && <div className="alert alert-error" role="alert">{String(sp.error).slice(0, 200)}</div>}
       {b.status === "cancelled" && b.cancel_reason && <div className="alert alert-info">Cancelled: {b.cancel_reason}</div>}
       <div className="spread">
@@ -29,8 +29,8 @@ export default async function BookingDetail({ params, searchParams }) {
           <span className="muted">{b.tour_title} · {dateRange(b.start_date, b.end_date)}</span>
         </div>
         <div className="row">
-          <span className={`badge badge-${b.status}`}>{b.status}</span>
-          <span className={`badge badge-${b.payment_status}`}>{b.payment_status}</span>
+          <span className={`badge badge-${b.status}`}>{statusLabel(b.status)}</span>
+          <span className={`badge badge-${b.payment_status}`}>{paymentLabel(b.payment_status)}</span>
         </div>
       </div>
 
@@ -87,11 +87,11 @@ export default async function BookingDetail({ params, searchParams }) {
             <form action={addPayment} className="card card-pad">
               <h3>Record a payment</h3>
               <input type="hidden" name="booking_id" value={b.id} />
-              <div className="field"><label>Amount (GH₵)</label><input name="amount" type="number" step="0.01" min="0.01" defaultValue={(b.balance / 100).toFixed(2)} required /></div>
-              <div className="field"><label>Method</label>
-                <select name="method"><option value="momo">Mobile money</option><option value="cash">Cash</option><option value="bank">Bank transfer</option><option value="card">Card</option></select>
+              <div className="field"><label htmlFor="pay-amount">Amount (GH₵)</label><input id="pay-amount" name="amount" type="number" step="0.01" min="0.01" defaultValue={(b.balance / 100).toFixed(2)} required /></div>
+              <div className="field"><label htmlFor="pay-method">Method</label>
+                <select id="pay-method" name="method"><option value="momo">Mobile money</option><option value="cash">Cash</option><option value="bank">Bank transfer</option><option value="card">Card</option></select>
               </div>
-              <div className="field"><label>Note / MoMo transaction ID</label><input name="note" maxLength={200} /></div>
+              <div className="field"><label htmlFor="pay-note">Note / MoMo transaction ID</label><input id="pay-note" name="note" maxLength={200} /></div>
               <button className="btn btn-block">Save payment</button>
             </form>
           )}
@@ -100,11 +100,11 @@ export default async function BookingDetail({ params, searchParams }) {
               <summary><strong>Record a refund</strong></summary>
               <form action={addRefund} style={{ marginTop: 12 }}>
                 <input type="hidden" name="booking_id" value={b.id} />
-                <div className="field"><label>Amount refunded (GH₵)</label><input name="amount" type="number" step="0.01" min="0.01" max={b.paid / 100} required /></div>
-                <div className="field"><label>Paid back by</label>
-                  <select name="method"><option value="momo">Mobile money</option><option value="cash">Cash</option><option value="bank">Bank transfer</option><option value="card">Card (via Paystack)</option></select>
+                <div className="field"><label htmlFor="ref-amount">Amount refunded (GH₵)</label><input id="ref-amount" name="amount" type="number" step="0.01" min="0.01" max={b.paid / 100} required /></div>
+                <div className="field"><label htmlFor="ref-method">Paid back by</label>
+                  <select id="ref-method" name="method"><option value="momo">Mobile money</option><option value="cash">Cash</option><option value="bank">Bank transfer</option><option value="card">Card (via Paystack)</option></select>
                 </div>
-                <div className="field"><label>Reason</label><input name="note" required maxLength={200} placeholder="e.g. Cancelled 3 weeks before trip" /></div>
+                <div className="field"><label htmlFor="ref-note">Reason</label><input id="ref-note" name="note" required maxLength={200} placeholder="e.g. Cancelled 3 weeks before trip" /></div>
                 <p className="small muted">This records the refund in the system. Send the money itself through MoMo, the bank or the Paystack dashboard.</p>
                 <button className="btn btn-danger btn-block">Save refund</button>
               </form>
@@ -124,7 +124,7 @@ export default async function BookingDetail({ params, searchParams }) {
                 <summary className="btn btn-danger btn-block">Cancel booking…</summary>
                 <form action={setBookingStatus} style={{ marginTop: 10 }}>
                   <input type="hidden" name="booking_id" value={b.id} /><input type="hidden" name="status" value="cancelled" />
-                  <div className="field"><label>Reason</label><input name="reason" maxLength={200} placeholder="e.g. Customer changed plans" /></div>
+                  <div className="field"><label htmlFor="cancel-reason">Reason</label><input id="cancel-reason" name="reason" maxLength={200} placeholder="e.g. Customer changed plans" /></div>
                   <button className="btn btn-danger btn-block">Yes, cancel and free the seats</button>
                 </form>
               </details>

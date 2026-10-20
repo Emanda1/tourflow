@@ -17,7 +17,7 @@ export default async function DeparturesPage({ searchParams }) {
           <Link href="/admin/departures?past=1" className={`badge ${past ? "badge-ok" : ""}`}>All</Link>
         </div>
       </div>
-      <p className="muted">To add new dates, open a tour under <Link href="/admin/tours">Tours</Link>.</p>
+      {can(user, "tours.edit") && <p className="muted">To add new dates, open a tour under <Link href="/admin/tours">Tours</Link>.</p>}
       <div className="card table-wrap"><table>
         <thead><tr><th>Trip</th><th>Dates</th><th>Status</th><th>Seats</th><th>Guide</th><th>Driver / vehicle</th><th className="num">Price</th></tr></thead>
         <tbody>{deps.map((d) => (

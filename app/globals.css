@@ -375,3 +375,19 @@ tr.clickable:hover td { background: #faf9f6; }
 .cover .pop-tag { position: absolute; left: 12px; bottom: 10px; background: rgba(28,25,23,.78); color: #fff; font-size: .75rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
 .mobile-book .btn { white-space: nowrap; }
 @media (max-width: 860px) { body:has(.has-mobile-book) .wa-float { bottom: 84px; } }
+.tour-card { position: relative; }
+.tour-link { display: flex; flex-direction: column; flex: 1; color: var(--ink); }
+.tour-link:hover { text-decoration: none; }
+.tour-card > .fav { top: 10px; right: 10px; }
+
+/* Admin menu on phones: one "☰ Page name" button instead of a full screen of links */
+.nav-toggle { display: none; width: 100%; text-align: left; background: rgba(255,255,255,.08); color: #fff; border: 0; border-radius: 8px; padding: 10px 12px; font-weight: 600; cursor: pointer; }
+@media (max-width: 860px) {
+  .sidebar { padding: 12px 14px; gap: 8px; }
+  .sidebar .logo { padding-bottom: 6px; }
+  .nav-toggle { display: block; }
+  .sidebar nav { display: none !important; }
+  .sidebar nav.open { display: grid !important; grid-template-columns: 1fr 1fr; gap: 2px; }
+  .sidebar .bottom { display: none; }
+  .sidebar:has(nav.open) .bottom { display: block; }
+}

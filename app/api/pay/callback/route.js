@@ -14,8 +14,9 @@ export async function GET(request) {
     if (!result) return to("/");
     const b = result.booking;
     // Only show the booking if this browser started the payment; otherwise ask them to look it up.
-    if (!getBookingForCustomer(b.ref, await payingBookingToken(b.ref))) return to(`/find?${result.ok ? "paid=1" : "failed=1"}&ref=${b.ref}`);
-    return to(bookingPath(b, result.ok ? "&paid=1" : "&failed=1"));
+    const flag = result.ok ? "paid=1" : result.processing ? "processing=1" : "failed=1";
+    if (!getBookingForCustomer(b.ref, await payingBookingToken(b.ref))) return to(`/find?${flag}&ref=${b.ref}`);
+    return to(bookingPath(b, `&${flag}`));
   } catch (e) {
     console.error("Payment verification failed:", e.message);
     return to("/find?error=payment");

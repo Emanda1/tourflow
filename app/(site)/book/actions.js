@@ -1,7 +1,8 @@
 "use server";
 import { redirect } from "next/navigation";
 import { createBooking, BookingError, MAX_TRAVELLERS } from "@/lib/bookings";
-import { startCheckout, bookingPath, CheckoutError, rememberPayingBooking } from "@/lib/checkout";
+import { startCheckout, bookingPath, rememberPayingBooking } from "@/lib/checkout";
+import { sendBookingReceived } from "@/lib/bookings";
 import { rateLimit, HOUR } from "@/lib/ratelimit";
 import { clientIp } from "@/lib/request";
 import { onlinePaymentsAvailable } from "@/lib/config";
@@ -11,7 +12,8 @@ export async function submitBooking(prevState, formData) {
   if (formData.get("website")) return { error: "Something went wrong. Please try again." }; // spam trap
   if (!rateLimit(`book:${await clientIp()}`, 10, HOUR)) return { error: "Too many bookings from your connection. Please call us to complete your booking." };
 
-  const count = Math.max(1, Math.min(MAX_TRAVELLERS, Number(formData.get("count")) || 1));
+  const count = Math.max(1, Math.floor(Number(formData.get("count")) || 1));
+  if (count > MAX_TRAVELLERS) return { error: `For groups of more than ${MAX_TRAVELLERS}, please request a custom trip or call us.` };
   const name = String(formData.get("name") || "");
   const travellers = Array.from({ length: count }, (_, i) => ({
     name: String(formData.get(`traveller_${i}`) || (i === 0 ? name : "")),
@@ -19,7 +21,7 @@ export async function submitBooking(prevState, formData) {
   }));
   if (travellers.some((t) => !t.name.trim())) return { error: "Please enter a name for every traveller." };
 
-  expireUnpaidBookings(); // free seats from abandoned bookings before checking availability
+  if (onlinePaymentsAvailable) expireUnpaidBookings(); // free seats from abandoned bookings before checking availability
   let booking;
   try {
     booking = createBooking({
@@ -36,6 +38,7 @@ export async function submitBooking(prevState, formData) {
     throw e;
   }
 
+  await sendBookingReceived(booking); // so the customer has their reference and link even if they abandon payment
   let target = bookingPath(booking);
   if (onlinePaymentsAvailable) {
     try {
@@ -43,7 +46,7 @@ export async function submitBooking(prevState, formData) {
       target = await startCheckout(booking);
     } catch (e) {
       console.error("Payment start failed:", e.message);
-      target = bookingPath(booking, e instanceof CheckoutError ? "&error=payment" : "&error=payment");
+      target = bookingPath(booking, "&error=payment");
     }
   }
   redirect(target);

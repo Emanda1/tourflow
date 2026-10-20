@@ -1,6 +1,8 @@
 "use client";
+import { useEffect } from "react";
 
-export default function Error({ reset }) {
+export default function Error({ error, reset }) {
+  useEffect(() => { console.error(error); }, [error]);
   return (
     <main className="container" style={{ maxWidth: 520, padding: "100px 20px", textAlign: "center" }}>
       <h1>Something went wrong</h1>

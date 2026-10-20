@@ -19,7 +19,8 @@ export default function RevenueChart({ months }) {
   const quarter = nice / 4;
   const quarterIsRound = Number.isInteger(quarter / Math.pow(10, Math.floor(Math.log10(quarter || 1))));
   const fractions = quarterIsRound && (metric === "revenue" || Number.isInteger(quarter)) ? [0, 0.25, 0.5, 0.75, 1] : metric === "revenue" ? [0, 0.2, 0.4, 0.6, 0.8, 1] : [0, 0.5, 1];
-  const ticks = fractions.map((f) => f * nice);
+  const empty = values.every((v) => v === 0);
+  const ticks = empty ? [0] : fractions.map((f) => f * nice);
   const label = (v) => (metric === "revenue" ? short(v) : String(Math.round(v)));
   const total = values.reduce((a, b) => a + b, 0);
 
@@ -30,9 +31,9 @@ export default function RevenueChart({ months }) {
           <h2 style={{ margin: 0 }}>{metric === "revenue" ? "Money collected" : "New bookings"}</h2>
           <span className="muted small">Last {months.length} months · {metric === "revenue" ? fmt(total) : `${total} bookings`}</span>
         </div>
-        <div className="seg" role="tablist">
-          <button className={metric === "revenue" ? "on" : ""} onClick={() => setMetric("revenue")}>Revenue</button>
-          <button className={metric === "bookings" ? "on" : ""} onClick={() => setMetric("bookings")}>Bookings</button>
+        <div className="seg" role="group" aria-label="Show">
+          <button type="button" aria-pressed={metric === "revenue"} className={metric === "revenue" ? "on" : ""} onClick={() => setMetric("revenue")}>Revenue</button>
+          <button type="button" aria-pressed={metric === "bookings"} className={metric === "bookings" ? "on" : ""} onClick={() => setMetric("bookings")}>Bookings</button>
         </div>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${metric} per month`}>

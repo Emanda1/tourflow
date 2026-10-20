@@ -15,6 +15,7 @@ export default async function EditTour({ params, searchParams }) {
   const tour = db.prepare("SELECT * FROM tours WHERE id = ?").get(Number(id));
   if (!tour) notFound();
   const deps = listDepartures({ tourId: tour.id });
+  const last = deps[deps.length - 1]; // new dates start with the same pickup, seats and team as the latest one
   const staff = db.prepare("SELECT * FROM staff ORDER BY name").all();
   const vehicles = db.prepare("SELECT * FROM vehicles ORDER BY name").all();
 
@@ -45,7 +46,7 @@ export default async function EditTour({ params, searchParams }) {
           </section>
           <section className="card card-pad">
             <h3>Add a date</h3>
-            <DepartureForm tourId={tour.id} staff={staff} vehicles={vehicles} defaults={{ capacity: 20, pickup_point: "Accra Mall, Tetteh Quarshie", pickup_time: "06:00" }} />
+            <DepartureForm tourId={tour.id} staff={staff} vehicles={vehicles} defaults={{ capacity: last?.capacity || 20, pickup_point: last?.pickup_point || "", pickup_time: last?.pickup_time || "", vehicle_id: last?.vehicle_id, guide_id: last?.guide_id, driver_id: last?.driver_id }} />
           </section>
         </div>
       </div>

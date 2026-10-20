@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import { requireUser } from "@/lib/auth";
 import { ROLES } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { date } from "@/lib/format";
+import { dateTime } from "@/lib/format";
 import Toast from "@/components/Toast";
 import { updateUser } from "../../account-actions";
 import NewUserForm from "./NewUserForm";
@@ -33,26 +33,28 @@ export default async function StaffPage({ searchParams }) {
               <tr key={u.id}>
                 <td><strong>{u.name}</strong>{u.id === me.id ? " (you)" : ""}<div className="small muted">{u.email}</div></td>
                 <td>
-                  <form action={updateUser} className="row" style={{ gap: 6 }}>
-                    <input type="hidden" name="id" value={u.id} /><input type="hidden" name="action" value="role" />
-                    <select name="role" defaultValue={u.role} style={{ width: "auto", padding: "5px 8px" }}>{Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-                    <button className="btn btn-secondary btn-sm">Save</button>
-                  </form>
+                  {u.id === me.id ? ROLES[u.role] : (
+                    <form action={updateUser} className="row" style={{ gap: 6 }}>
+                      <input type="hidden" name="id" value={u.id} /><input type="hidden" name="action" value="role" />
+                      <select name="role" defaultValue={u.role} aria-label={`Role for ${u.name}`} style={{ width: "auto", padding: "5px 8px" }}>{Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+                      <button className="btn btn-secondary btn-sm">Save</button>
+                    </form>
+                  )}
                 </td>
                 <td>
                   {!u.active ? <span className="badge badge-closed">Deactivated</span>
-                    : isLockedAnywhere(u.email) ? <span className="badge badge-cancelled" title="Too many wrong passwords. Reset the password or reactivate to unlock.">Locked</span>
+                    : isLockedAnywhere(u.email) ? <span className="badge badge-cancelled" title="Too many wrong passwords. Use Options → Unlock sign-in.">Locked</span>
                     : u.must_change_password ? <span className="badge badge-warn">Temp password</span>
                     : <span className="badge badge-ok">Active</span>}
                 </td>
-                <td className="small">{u.last_login_at ? date(u.last_login_at) : "Never"}</td>
+                <td className="small">{u.last_login_at ? dateTime(u.last_login_at) : "Never"}</td>
                 <td>
-                  <details>
+                  {u.id === me.id ? <a className="small" href="/admin/account">My account</a> : <details>
                     <summary className="link-btn small">Options</summary>
                     <div className="stack" style={{ marginTop: 8, minWidth: 220 }}>
                       <form action={updateUser}>
                         <input type="hidden" name="id" value={u.id} /><input type="hidden" name="action" value="reset" />
-                        <input name="password" placeholder="New temporary password" minLength={10} maxLength={200} required autoComplete="off" />
+                        <input name="password" aria-label={`New temporary password for ${u.name}`} placeholder="New temporary password" minLength={10} maxLength={200} required autoComplete="off" />
                         <button className="btn btn-secondary btn-sm" style={{ marginTop: 6 }}>Reset password</button>
                       </form>
                       {isLockedAnywhere(u.email) && <form action={updateUser}><input type="hidden" name="id" value={u.id} /><input type="hidden" name="action" value="unlock" /><button className="btn btn-secondary btn-sm">Unlock sign-in</button></form>}
@@ -61,7 +63,7 @@ export default async function StaffPage({ searchParams }) {
                         ? <form action={updateUser}><input type="hidden" name="id" value={u.id} /><input type="hidden" name="action" value="deactivate" /><button className="btn btn-danger btn-sm">Deactivate</button></form>
                         : <form action={updateUser}><input type="hidden" name="id" value={u.id} /><input type="hidden" name="action" value="activate" /><button className="btn btn-secondary btn-sm">Reactivate</button></form>)}
                     </div>
-                  </details>
+                  </details>}
                 </td>
               </tr>
             ))}</tbody>

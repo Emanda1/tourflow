@@ -3,7 +3,10 @@ import { company } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
-const esc = (s) => String(s || "").replace(/[\;,]/g, (c) => "\\" + c).replace(/\r?\n/g, "\\n");
+// Escape text for calendar files (RFC 5545): backslash first, then ; and , and new lines.
+const esc = (s) => String(s || "").replace(/\\/g, "\\\\").replace(/[;,]/g, (c) => "\\" + c).replace(/\r?\n/g, "\\n");
+// Lines longer than 75 characters must be folded onto continuation lines starting with a space.
+const fold = (line) => (line.length <= 74 ? line : line.match(/.{1,73}/g).join("\r\n "));
 const day = (iso) => iso.replace(/-/g, "");
 
 // "Add to calendar" file for a booking (works with Google Calendar, iPhone and Outlook).
@@ -22,6 +25,6 @@ export async function GET(request, { params }) {
     `DESCRIPTION:${esc(`Booking ${b.ref} with ${company.name}. Pickup: ${b.pickup_point || "TBC"} ${b.pickup_time || ""}. Questions: ${company.phone}`)}`,
     "BEGIN:VALARM", "TRIGGER:-P1D", "ACTION:DISPLAY", `DESCRIPTION:${esc(b.tour_title)} tomorrow`, "END:VALARM",
     "END:VEVENT", "END:VCALENDAR",
-  ].join("\r\n");
+  ].map(fold).join("\r\n");
   return new Response(ics, { headers: { "Content-Type": "text/calendar; charset=utf-8", "Content-Disposition": `attachment; filename="${b.ref}.ics"`, "Cache-Control": "no-store" } });
 }

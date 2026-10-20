@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import TourExplorer from "@/components/TourExplorer";
 import { coverStyle, date } from "@/lib/format";
 
+const SEATS_LEFT = "(d.capacity - COALESCE((SELECT SUM(b.travellers) FROM bookings b WHERE b.departure_id = d.id AND b.status != 'cancelled'), 0))";
 const daysUntil = (iso) => Math.max(0, Math.round((new Date(iso + "T00:00:00") - new Date(new Date().toDateString())) / 86400000));
 
 export const dynamic = "force-dynamic";
@@ -10,9 +11,11 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   const tours = db.prepare(`
     SELECT t.id, t.slug, t.title, t.destination, t.category, t.duration_days, t.price, t.summary, t.image_url,
-      (SELECT MIN(d.start_date) FROM departures d WHERE d.tour_id = t.id AND d.status = 'open' AND d.start_date >= date('now')) AS next_date,
-      (SELECT d.capacity - COALESCE((SELECT SUM(b.travellers) FROM bookings b WHERE b.departure_id = d.id AND b.status != 'cancelled'), 0)
-         FROM departures d WHERE d.tour_id = t.id AND d.status = 'open' AND d.start_date >= date('now') ORDER BY d.start_date LIMIT 1) AS seats_left,
+      (SELECT MIN(d.start_date) FROM departures d WHERE d.tour_id = t.id AND d.status = 'open' AND d.start_date >= date('now') AND ${SEATS_LEFT} > 0) AS next_date,
+      (SELECT ${SEATS_LEFT} FROM departures d WHERE d.tour_id = t.id AND d.status = 'open' AND d.start_date >= date('now') AND ${SEATS_LEFT} > 0
+         ORDER BY d.start_date LIMIT 1) AS seats_left,
+      COALESCE((SELECT MIN(COALESCE(d.price_override, t.price)) FROM departures d WHERE d.tour_id = t.id AND d.status = 'open'
+         AND d.start_date >= date('now') AND ${SEATS_LEFT} > 0), t.price) AS from_price,
       (SELECT COALESCE(SUM(b.travellers), 0) FROM bookings b JOIN departures d ON d.id = b.departure_id
          WHERE d.tour_id = t.id AND b.status != 'cancelled' AND b.created_at > datetime('now', '-30 days')) AS booked_recently
     FROM tours t WHERE t.active = 1`).all();
@@ -33,11 +36,11 @@ export default async function Home() {
         <div className="container">
           <h1>Explore Ghana and beyond,<br />without the stress.</h1>
           <p>Guided tours, weekend getaways and international holiday packages. Book in minutes and pay in full or in instalments with mobile money.</p>
-          <div className="hero-stats">
+          {stats.travellers > 0 && <div className="hero-stats">
             <div><strong>{stats.tours}</strong><span>tours &amp; packages</span></div>
             <div><strong>{stats.places}</strong><span>destinations</span></div>
             <div><strong>{stats.travellers}+</strong><span>travellers booked</span></div>
-          </div>
+          </div>}
         </div>
       </section>
       <main className="container explorer-wrap" id="tours">

@@ -18,7 +18,7 @@ export default async function DepartureDetail({ params, searchParams }) {
   const d = getDeparture(Number(id));
   if (!d) notFound();
   const bookings = listBookings({ departureId: d.id }).filter((b) => b.status !== "cancelled");
-  const travellers = db.prepare(`SELECT tr.*, b.ref, b.id AS booking_id, b.status, c.phone AS contact_phone, c.name AS contact_name
+  const travellers = db.prepare(`SELECT tr.*, b.ref, b.id AS booking_id, b.status, c.phone AS contact_phone, COALESCE(b.contact_name, c.name) AS contact_name
     FROM travellers tr JOIN bookings b ON b.id = tr.booking_id JOIN customers c ON c.id = b.customer_id
     WHERE b.departure_id = ? AND b.status != 'cancelled' ORDER BY tr.name`).all(d.id);
   const staff = db.prepare("SELECT * FROM staff ORDER BY name").all();
@@ -29,7 +29,7 @@ export default async function DepartureDetail({ params, searchParams }) {
   return (
     <div className="stack">
       <Link href="/admin/departures" className="small no-print">← All trips</Link>
-      <Toast message={sp.saved ? "Trip saved" : sp.sent ? `Message sent to ${sp.sent} booking(s)` : null} />
+      <Toast message={sp.saved ? "Trip saved" : sp.sent ? `Message sent to ${sp.sent} contact${sp.sent === "1" ? "" : "s"}` : null} />
       {sp.error && <div className="alert alert-error" role="alert">{String(sp.error).slice(0, 200)}</div>}
       <div className="spread">
         <div>
@@ -51,7 +51,7 @@ export default async function DepartureDetail({ params, searchParams }) {
         <div className="card-pad spread">
           <div>
             <h2 style={{ margin: 0 }}>Passenger manifest</h2>
-            <span className="small muted">{company.name} · Guide: {d.guide_name || "—"} · Driver: {d.driver_name || "—"} · Vehicle: {d.vehicle_name ? `${d.vehicle_name} (${d.vehicle_plate})` : "—"}</span>
+            <span className="small muted">{company.name} · Guide: {d.guide_name || "—"} · Driver: {d.driver_name || "—"} · Vehicle: {d.vehicle_name ? `${d.vehicle_name}${d.vehicle_plate ? ` (${d.vehicle_plate})` : ""}` : "—"}</span>
           </div>
           <div className="row no-print">
             {can(user, "data.export") && <a className="btn btn-secondary btn-sm" href={`/admin/export/manifest/${d.id}`}>Download CSV</a>}
@@ -68,7 +68,7 @@ export default async function DepartureDetail({ params, searchParams }) {
         </section>
         {can(user, "trips.message") && <form action={messageDeparture} className="card card-pad">
           <h2>Message all travellers</h2>
-          <p className="small muted">Sends an SMS to the lead contact of every confirmed booking on this trip.</p>
+          <p className="small muted">Sends one SMS to each lead contact booked on this trip (paid or not). Keep it under 160 characters to use one SMS credit.</p>
           <input type="hidden" name="departure_id" value={d.id} />
           <div className="field">
             <textarea name="message" maxLength={480} defaultValue={`Reminder: ${d.tour_title} departs ${date(d.start_date)}${d.pickup_time ? ` at ${d.pickup_time}` : ""} from ${d.pickup_point || "the usual pickup point"}. Please arrive 15 minutes early. - ${company.name}`} />

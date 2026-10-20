@@ -107,3 +107,51 @@ test("a recent pending payment stops the booking from expiring", () => {
   db.prepare("INSERT INTO payments (booking_id, amount, method, reference, status) VALUES (?, 30000, 'paystack', 'PEND-1', 'pending')").run(b.id);
   assert.equal(expireUnpaidBookings(30), 0);
 });
+
+test("a 0% deposit tour needs the full price to confirm", async () => {
+  db.exec("DELETE FROM payments; DELETE FROM travellers; DELETE FROM bookings;");
+  const t2 = db.prepare(`INSERT INTO tours (slug,title,destination,duration_days,price,deposit_percent) VALUES ('z','Zero','Accra',1,50000,0)`).run().lastInsertRowid;
+  const future = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
+  const dep2 = db.prepare("INSERT INTO departures (tour_id,start_date,end_date,capacity) VALUES (?,?,?,10)").run(t2, future, future).lastInsertRowid;
+  const b = createBooking({ departureId: dep2, name: "Kofi", email: "k@example.com", phone: "0249998887", travellers: [{ name: "Kofi" }], plan: "deposit" });
+  assert.equal(b.payment_plan, "full", "deposit plan isn't offered on a 0% tour");
+  assert.equal(b.depositDue, 50000);
+  const { minimumPayment, amountDueNow } = await import("../lib/bookings.js");
+  assert.equal(minimumPayment(b), 50000);
+  assert.equal(amountDueNow(b), 50000);
+});
+
+test("until confirmed, the smallest online payment is the rest of the deposit", async () => {
+  db.exec("DELETE FROM payments; DELETE FROM travellers; DELETE FROM bookings;");
+  const { minimumPayment, amountDueNow } = await import("../lib/bookings.js");
+  const b = book(1);
+  assert.equal(minimumPayment(b), 30000);
+  assert.equal(amountDueNow(b), 30000);
+});
+
+test("a payment for a booking staff cancelled is NOT auto-restored", async () => {
+  db.exec("DELETE FROM payments; DELETE FROM travellers; DELETE FROM bookings;");
+  const b = book(1);
+  db.prepare("UPDATE bookings SET status = 'cancelled', cancel_reason = 'Customer changed plans' WHERE id = ?").run(b.id);
+  const after = await recordPayment({ bookingId: b.id, amount: 30000, method: "momo", reference: "LATE-STAFF" });
+  assert.equal(after.status, "cancelled");
+  assert.match(after.cancel_reason, /^PAID /, "staff are alerted to refund or rebook");
+});
+
+test("deposit rule is fixed when booking, even if the tour changes later", () => {
+  db.exec("DELETE FROM payments; DELETE FROM travellers; DELETE FROM bookings;");
+  const b = book(1);
+  db.prepare("UPDATE tours SET deposit_percent = 80 WHERE slug = 't'").run();
+  assert.equal(getBooking(b.id).depositDue, 30000);
+  db.prepare("UPDATE tours SET deposit_percent = 30 WHERE slug = 't'").run();
+});
+
+test("a big group can book an empty trip; over 30 is refused clearly", () => {
+  db.exec("DELETE FROM payments; DELETE FROM travellers; DELETE FROM bookings;");
+  db.prepare("UPDATE departures SET capacity = 40 WHERE id = ?").run(depId);
+  const b = book(25);
+  assert.equal(b.travellers, 25);
+  assert.throws(() => book(31), /groups over 30|contact us/i);
+  db.prepare("UPDATE departures SET capacity = 3 WHERE id = ?").run(depId);
+  db.exec("DELETE FROM payments; DELETE FROM travellers; DELETE FROM bookings;");
+});

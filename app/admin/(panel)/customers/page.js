@@ -7,6 +7,8 @@ import Link from "next/link";
 export default async function CustomersPage({ searchParams }) {
   const user = await requireUser("customers.view");
   const { q = "" } = await searchParams;
+  const digits = String(q).replace(/\D/g, "");
+  const phoneQ = digits.length >= 4 ? (digits.startsWith("0") ? "233" + digits.slice(1) : digits) : "";
   const customers = db.prepare(`SELECT c.*,
       COUNT(DISTINCT b.id) AS trips,
       COALESCE((SELECT SUM(CASE WHEN p.kind = 'refund' THEN -p.amount ELSE p.amount END) FROM payments p JOIN bookings b2 ON b2.id = p.booking_id WHERE b2.customer_id = c.id AND p.status = 'success'), 0) AS spent,
@@ -14,8 +16,8 @@ export default async function CustomersPage({ searchParams }) {
     FROM customers c
     LEFT JOIN bookings b ON b.customer_id = c.id AND b.status != 'cancelled'
     LEFT JOIN departures d ON d.id = b.departure_id
-    WHERE c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?
-    GROUP BY c.id ORDER BY spent DESC`).all(`%${q}%`, `%${q}%`, `%${q}%`);
+    WHERE c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR (? != '' AND replace(c.phone, '+', '') LIKE ?)
+    GROUP BY c.id ORDER BY spent DESC`).all(`%${q}%`, `%${q}%`, `%${q}%`, phoneQ, `%${phoneQ}%`);
   return (
     <div className="stack">
       <h1>Customers</h1>

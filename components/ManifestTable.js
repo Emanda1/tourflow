@@ -1,11 +1,13 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { setCheckIn } from "@/app/admin/actions";
 
 const fmt = (p) => "GH₵ " + (p / 100).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function ManifestTable({ travellers, canCheckIn = false, showMoney = false, canOpenBookings = false }) {
   const [rows, setRows] = useState(travellers);
+  // Pick up new travellers and other staff's check-ins when the page refreshes.
+  useEffect(() => { setRows(travellers); }, [travellers]);
   const [q, setQ] = useState("");
   const [onlyWaiting, setOnlyWaiting] = useState(false);
   const [, startTransition] = useTransition();
@@ -53,7 +55,7 @@ export default function ManifestTable({ travellers, canCheckIn = false, showMone
               </td>
             </tr>
           ))}
-          {shown.length === 0 && <tr><td colSpan={7} className="muted">{rows.length ? "No one matches." : "No travellers yet."}</td></tr>}
+          {shown.length === 0 && <tr><td colSpan={showMoney ? 7 : 6} className="muted">{rows.length ? "No one matches." : "No travellers yet."}</td></tr>}
         </tbody>
       </table></div>
     </>

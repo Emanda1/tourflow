@@ -77,3 +77,34 @@ test("only Ghana mobile numbers get automatic website SMS", async () => {
   assert.ok(!isGhanaMobile("+447700900123"));
   assert.ok(!isGhanaMobile("+233301234567"), "landlines excluded");
 });
+
+test("phone numbers are normalised to +233 for every common way of typing them", async () => {
+  const { normalisePhone } = await import("../lib/format.js");
+  for (const v of ["0241234567", "024 123 4567", "+233241234567", "233241234567", "00233241234567", "+233 0241234567", "241234567"]) {
+    assert.equal(normalisePhone(v), "+233241234567", v);
+  }
+  assert.equal(normalisePhone("+447700900123"), "+447700900123");
+});
+
+test("money input never goes negative", async () => {
+  const { toPesewas } = await import("../lib/format.js");
+  assert.equal(toPesewas("-5"), 0);
+  assert.equal(toPesewas("12.345"), 1235);
+  assert.equal(toPesewas("1,250.50"), 125050);
+});
+
+test("impossible dates are rejected", async () => {
+  const { isDate } = await import("../lib/validate.js");
+  assert.ok(isDate("2026-02-28"));
+  assert.ok(!isDate("2026-02-31"));
+  assert.ok(!isDate("2026-13-01"));
+});
+
+test("number settings with typos fall back to safe defaults", async () => {
+  process.env.TEST_NUM = "30m";
+  const { envInt } = await import("../lib/envnum.js");
+  assert.equal(envInt("TEST_NUM", 30, { min: 5 }), 30);
+  process.env.TEST_NUM = "0";
+  assert.equal(envInt("TEST_NUM", 14, { min: 1 }), 1);
+  delete process.env.TEST_NUM;
+});

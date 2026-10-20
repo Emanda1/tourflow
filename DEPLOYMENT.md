@@ -22,7 +22,7 @@ TourFlow stores its data in a single database file, so it needs a server with a 
 | Option | Good for | Notes |
 |---|---|---|
 | **Render** (Web Service + Disk) | Easiest | Add a Disk mounted at `/var/data`, set `DATA_DIR=/var/data` |
-| **Railway** (+ Volume) | Easy | Mount a volume at `/data`, set `DATA_DIR=/data` |
+| **Railway** (+ Volume) | Easy | Mount a volume at `/data`, set `DATA_DIR=/data` and `RAILWAY_RUN_UID=0` (Railway builds with the Dockerfile; check Railway's current volume docs) |
 | **A small VPS** (DigitalOcean, Hetzner, Contabo) | Cheapest long-term | Use the Dockerfile, or Node + PM2 behind Nginx/Caddy |
 
 Do **not** use Vercel or Netlify for this version: they have no persistent disk, so data would be lost.
@@ -36,7 +36,7 @@ Set these in the hosting dashboard. Never put real keys in GitHub.
 | `NODE_ENV` | yes | `production` (most hosts set this automatically) |
 | `APP_URL` | **yes** | `https://bookings.theircompany.com`. The app will not start without an https address. |
 | `SETUP_CODE` | yes, for first setup | 12+ random characters. Needed to create the owner account. Remove after setup. |
-| `DATA_DIR` | yes on hosts | Folder on the persistent disk, e.g. `/var/data` |
+| `DATA_DIR` | **yes** | Folder on the persistent disk, e.g. `/var/data`. The app won't start in production without it, so data can't be lost by accident on the next deploy. |
 | `TRUST_PROXY` | **yes** | `true` behind Render, Railway, Nginx or Caddy, so rate limits see real visitor IPs. The app won't start in production without it (or `IP_HEADER`). |
 | `TRUST_PROXY_HOPS` | if more than one proxy | Number of proxies in front of the app (default `1`) |
 | `IP_HEADER` | if using Cloudflare | `cf-connecting-ip` |
@@ -62,6 +62,7 @@ Set these in the hosting dashboard. Never put real keys in GitHub.
 
 ### VPS with Docker
 ```bash
+sudo mkdir -p /srv/tourflow && sudo chown 10001:10001 /srv/tourflow   # the app runs as user 10001
 docker build -t tourflow .
 docker run -d --name tourflow --restart unless-stopped \
   -p 127.0.0.1:3000:3000 -v /srv/tourflow:/data --env-file /srv/tourflow.env tourflow
@@ -110,7 +111,8 @@ Money goes straight from Paystack to the company's bank or MoMo settlement accou
 ### Restoring a backup
 1. Stop the app.
 2. In `DATA_DIR`, rename `tourflow.db` to `tourflow-broken.db`, and delete `tourflow.db-wal` and `tourflow.db-shm` if present.
-3. Copy the backup file to `DATA_DIR/tourflow.db`.
+3. Copy the backup file (e.g. `backups/tourflow-daily-2026-11-02-02-00.db`) to `DATA_DIR/tourflow.db`.
+   Tour photos and the logo are in `backups/uploads`; copy any that are missing back into `DATA_DIR/uploads`.
 4. Start the app and check the latest bookings.
 
 ## 9. Updating to a new version
@@ -124,7 +126,7 @@ Money goes straight from Paystack to the company's bank or MoMo settlement accou
 | Problem | Fix |
 |---|---|
 | App won't start, log says `APP_URL must be set` | Set `APP_URL` to the https address |
-| Owner locked out | Wait 15 minutes, or run `npm run create-owner` on the server to reset |
+| Owner locked out or forgot password | Use **Forgot your password?** on the sign-in page (needs email set up). Otherwise, on the server: `npm run create-owner -- "Name" owner@company.com` (resets the password, clears the lock and signs out old sessions) |
 | Dashboard says "payments arrived after a booking was cancelled" | Open the cancelled booking: rebook the customer on another date or refund them, then record the refund |
 | A staff member left | Owner → Staff accounts → Deactivate (signs them out immediately) |
 | Customer paid but booking shows unpaid | Check Paystack dashboard; webhook URL must be set. Record the payment manually with the Paystack reference. |

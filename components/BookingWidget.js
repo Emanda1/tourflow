@@ -14,6 +14,9 @@ export default function BookingWidget({ departures, depositPercent }) {
   const n = Math.min(pax, Math.max(left, 1));
   const total = sel ? sel.price * n : 0;
   const deposit = Math.ceil((total * depositPercent) / 100);
+  const hasDeposit = depositPercent > 0 && depositPercent < 100;
+  const thisYear = new Date().getFullYear();
+  const maxPax = Math.min(left, 30);
 
   if (departures.length === 0) {
     return (
@@ -34,7 +37,7 @@ export default function BookingWidget({ departures, depositPercent }) {
           return (
             <button key={d.id} type="button" disabled={l <= 0} onClick={() => setSelId(d.id)}
               className={`date-pill ${selId === d.id ? "date-on" : ""}`} aria-pressed={selId === d.id}>
-              <span className="dp-month">{s.toLocaleDateString("en-GB", { month: "short" })}</span>
+              <span className="dp-month">{s.toLocaleDateString("en-GB", { month: "short" })}{s.getFullYear() !== thisYear ? ` ${String(s.getFullYear()).slice(2)}` : ""}</span>
               <span className="dp-day">{s.getDate()}</span>
               <span className="dp-week">{s.toLocaleDateString("en-GB", { weekday: "short" })}</span>
               <span className={`dp-seats ${l <= 5 ? "dp-low" : ""}`}>{l > 0 ? `${l} left` : "Full"}</span>
@@ -43,6 +46,9 @@ export default function BookingWidget({ departures, depositPercent }) {
         })}
       </div>
 
+      {!sel && (
+        <div className="alert alert-info small">All upcoming dates are full. <Link href="/custom-trip">Ask us about another date</Link>.</div>
+      )}
       {sel && (
         <>
           <div className="meter meter-wide" title={`${sel.booked} of ${sel.capacity} seats taken`}>
@@ -54,12 +60,12 @@ export default function BookingWidget({ departures, depositPercent }) {
           <div className="stepper">
             <button type="button" onClick={() => setPax(Math.max(1, n - 1))} disabled={n <= 1} aria-label="Fewer travellers">−</button>
             <output aria-live="polite">{n}</output>
-            <button type="button" onClick={() => setPax(Math.min(left, n + 1))} disabled={n >= left} aria-label="More travellers">+</button>
+            <button type="button" onClick={() => setPax(Math.min(maxPax, n + 1))} disabled={n >= maxPax} aria-label="More travellers">+</button>
           </div>
 
           <div className="price-box">
             <div className="spread"><span>{fmt(sel.price)} × {n}</span><strong className="price">{fmt(total)}</strong></div>
-            <div className="spread small muted"><span>Or reserve with a {depositPercent}% deposit</span><span>{fmt(deposit)}</span></div>
+            {hasDeposit && <div className="spread small muted"><span>Or reserve with a {depositPercent}% deposit</span><span>{fmt(deposit)}</span></div>}
           </div>
           <Link className="btn btn-block btn-lg" href={`/book/${sel.id}?n=${n}`}>Book {n} seat{n > 1 ? "s" : ""}</Link>
         </>

@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { statusLabel, paymentLabel } from "@/lib/format";
 
 const fmt = (p) => "GH₵ " + (p / 100).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const d = (iso) => new Date(iso.length === 10 ? iso + "T00:00:00" : iso.replace(" ", "T")).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -33,9 +34,13 @@ export default function BookingsTable({ bookings, initialQuery = "", initialTab 
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
+    // "024 123 4567" should find "+233241234567"
+    const digits = needle.replace(/\D/g, "");
+    const phoneNeedle = digits.length >= 4 ? (digits.startsWith("0") ? "233" + digits.slice(1) : digits) : null;
     return bookings
       .filter((b) => match(b, tab))
-      .filter((b) => !needle || [b.ref, b.customer_name, b.customer_phone, b.tour_title].join(" ").toLowerCase().includes(needle))
+      .filter((b) => !needle || [b.ref, b.customer_name, b.customer_phone, b.tour_title].join(" ").toLowerCase().includes(needle)
+        || (phoneNeedle && String(b.customer_phone).replace(/\D/g, "").includes(phoneNeedle)))
       .sort((a, b) => {
         const x = a[sort.key], y = b[sort.key];
         return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * sort.dir;
@@ -74,7 +79,7 @@ export default function BookingsTable({ bookings, initialQuery = "", initialTab 
               <td>{b.customer_name}<div className="small muted">{b.customer_phone}</div></td>
               <td>{b.tour_title}<div className="small muted">{d(b.start_date)}</div></td>
               <td>{b.travellers}</td>
-              <td><span className={`badge badge-${b.status}`}>{b.status}</span> <span className={`badge badge-${b.payment_status}`}>{b.payment_status}</span></td>
+              <td><span className={`badge badge-${b.status}`}>{statusLabel(b.status)}</span> <span className={`badge badge-${b.payment_status}`}>{paymentLabel(b.payment_status)}</span></td>
               <td className="num">{fmt(b.total)}</td>
               <td className="num">{b.balance > 0 ? <strong>{fmt(b.balance)}</strong> : "—"}</td>
               <td className="small muted">{d(b.created_at)}<br />{b.source}</td>

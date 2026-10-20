@@ -72,7 +72,7 @@ Read **[SECURITY.md](SECURITY.md)**: what the system does to protect the busines
 ```
 npm test
 ```
-Runs the automated checks for passwords, permissions, input validation, CSV safety, booking rules, refunds and seat release.
+Runs the automated checks for passwords, sign-in lockouts and reset links, permissions, input validation, phone numbers, CSV safety, booking and deposit rules, refunds, late payments, seat release and database upgrades.
 
 ## Project structure
 

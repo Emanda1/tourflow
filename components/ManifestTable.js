@@ -4,7 +4,7 @@ import { setCheckIn } from "@/app/admin/actions";
 
 const fmt = (p) => "GH₵ " + (p / 100).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function ManifestTable({ travellers }) {
+export default function ManifestTable({ travellers, canCheckIn = false }) {
   const [rows, setRows] = useState(travellers);
   const [q, setQ] = useState("");
   const [onlyWaiting, setOnlyWaiting] = useState(false);
@@ -47,9 +47,9 @@ export default function ManifestTable({ travellers }) {
               <td>{t.contact_name}<div className="small muted">{t.contact_phone}</div></td>
               <td>{t.balance > 0 ? <span className="badge badge-partial">{fmt(t.balance)}</span> : <span className="badge badge-paid">Paid</span>}</td>
               <td>
-                <button type="button" onClick={() => toggle(t.id)} className={`btn btn-sm ${t.checked_in ? "" : "btn-secondary"}`} aria-pressed={!!t.checked_in}>
+                {!canCheckIn ? (t.checked_in ? "✓ On board" : "—") : <button type="button" onClick={() => toggle(t.id)} className={`btn btn-sm ${t.checked_in ? "" : "btn-secondary"}`} aria-pressed={!!t.checked_in}>
                   {t.checked_in ? "✓ On board" : "Check in"}
-                </button>
+                </button>}
               </td>
             </tr>
           ))}

@@ -1,3 +1,5 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db, listDepartures } from "@/lib/db";
@@ -7,6 +9,7 @@ import TourForm from "@/components/TourForm";
 import DepartureForm from "@/components/DepartureForm";
 
 export default async function EditTour({ params, searchParams }) {
+  const user = await requireUser("tours.edit");
   const { id } = await params;
   const sp = await searchParams;
   const tour = db.prepare("SELECT * FROM tours WHERE id = ?").get(Number(id));
@@ -19,6 +22,7 @@ export default async function EditTour({ params, searchParams }) {
     <div className="stack">
       <Link href="/admin/tours" className="small">← All tours</Link>
       <Toast message={sp.saved ? "Tour saved" : null} />
+      {sp.error && <div className="alert alert-error" role="alert">{String(sp.error).slice(0, 200)}</div>}
       <div className="spread">
         <h1 style={{ margin: 0 }}>{tour.title}</h1>
         <Link href={`/tours/${tour.slug}`} target="_blank" className="btn btn-secondary btn-sm">View on website ↗</Link>

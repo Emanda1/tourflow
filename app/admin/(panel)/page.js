@@ -1,20 +1,24 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import Link from "next/link";
-import { db, listDepartures, listBookings } from "@/lib/db";
+import { db, listDepartures, listBookings, NET_AMOUNT } from "@/lib/db";
 import { money, date, dateRange } from "@/lib/format";
 import RevenueChart from "@/components/RevenueChart";
 
 export default async function Dashboard() {
+  const user = await requireUser("dashboard.view");
+  const finance = can(user, "finance.view");
   const revenue = db.prepare(`SELECT
-      COALESCE(SUM(amount),0) AS total,
-      COALESCE(SUM(CASE WHEN created_at >= date('now','start of month') THEN amount END),0) AS month
-    FROM payments WHERE status = 'success'`).get();
+      COALESCE(SUM(${NET_AMOUNT}),0) AS total,
+      COALESCE(SUM(CASE WHEN p.created_at >= date('now','start of month') THEN ${NET_AMOUNT} END),0) AS month
+    FROM payments p WHERE p.status = 'success'`).get();
   const bookings = listBookings();
   const active = bookings.filter((b) => b.status !== "cancelled");
   const outstanding = active.reduce((s, b) => s + b.balance, 0);
   const travellers = active.filter((b) => b.start_date >= new Date().toISOString().slice(0, 10)).reduce((s, b) => s + b.travellers, 0);
   const pending = bookings.filter((b) => b.status === "pending");
   const upcoming = listDepartures({ upcomingOnly: true }).filter((d) => d.status !== "cancelled").slice(0, 6);
-  const byTour = db.prepare(`SELECT t.title, COALESCE(SUM(p.amount),0) AS revenue
+  const byTour = db.prepare(`SELECT t.title, COALESCE(SUM(${NET_AMOUNT}),0) AS revenue
     FROM tours t LEFT JOIN departures d ON d.tour_id = t.id LEFT JOIN bookings b ON b.departure_id = d.id
     LEFT JOIN payments p ON p.booking_id = b.id AND p.status = 'success'
     GROUP BY t.id ORDER BY revenue DESC`).all();
@@ -25,7 +29,7 @@ export default async function Dashboard() {
     d.setMonth(d.getMonth() - (5 - i));
     const key = d.toISOString().slice(0, 7);
     const row = db.prepare(`SELECT
-        COALESCE((SELECT SUM(amount) FROM payments WHERE status = 'success' AND substr(created_at,1,7) = ?), 0) AS revenue,
+        COALESCE((SELECT SUM(${NET_AMOUNT}) FROM payments p WHERE p.status = 'success' AND substr(p.created_at,1,7) = ?), 0) AS revenue,
         (SELECT COUNT(*) FROM bookings WHERE status != 'cancelled' AND substr(created_at,1,7) = ?) AS bookings`).get(key, key);
     return { key, label: d.toLocaleDateString("en-GB", { month: "short" }), year: d.getFullYear(), ...row };
   });
@@ -36,15 +40,17 @@ export default async function Dashboard() {
       <div className="spread">
         <h1 style={{ margin: 0 }}>Dashboard</h1>
         <div className="row">
-          <a href="/admin/export/bookings" className="btn btn-secondary">Export bookings (CSV)</a>
-          <Link href="/admin/bookings/new" className="btn">+ New booking</Link>
+          {can(user, "data.export") && <a href="/admin/export/bookings" className="btn btn-secondary">Export bookings (CSV)</a>}
+          {can(user, "bookings.edit") && <Link href="/admin/bookings/new" className="btn">+ New booking</Link>}
         </div>
       </div>
 
       <div className="grid grid-4">
+        {finance && <>
         <div className="card stat"><div className="label">Collected this month</div><div className="value">{money(revenue.month)}</div></div>
         <div className="card stat"><div className="label">Collected all time</div><div className="value">{money(revenue.total)}</div></div>
         <div className="card stat"><div className="label">Outstanding balances</div><div className="value">{money(outstanding)}</div></div>
+        </>}
         <div className="card stat"><div className="label">Upcoming travellers</div><div className="value">{travellers}</div></div>
       </div>
 
@@ -52,7 +58,7 @@ export default async function Dashboard() {
         <div className="alert alert-info"><strong>{pending.length}</strong> booking{pending.length > 1 ? "s are" : " is"} waiting for payment. <Link href="/admin/bookings?status=pending">Review</Link></div>
       )}
 
-      <section className="card card-pad"><RevenueChart months={months} /></section>
+      {finance && <section className="card card-pad"><RevenueChart months={months} /></section>}
 
       <div className="two-col">
         <section className="card">
@@ -69,7 +75,7 @@ export default async function Dashboard() {
             ))}</tbody>
           </table></div>
         </section>
-        <section className="card card-pad">
+        {finance && <section className="card card-pad">
           <h2>Revenue by tour</h2>
           {byTour.map((t) => (
             <div key={t.title} className="bar-row">
@@ -78,10 +84,10 @@ export default async function Dashboard() {
               <span className="small num">{money(t.revenue)}</span>
             </div>
           ))}
-        </section>
+        </section>}
       </div>
 
-      <section className="card">
+      {finance && <section className="card">
         <div className="card-pad"><h2 style={{ margin: 0 }}>Balances to collect</h2></div>
         <div className="table-wrap"><table>
           <thead><tr><th>Ref</th><th>Customer</th><th>Trip</th><th>Travel date</th><th className="num">Paid</th><th className="num">Balance</th></tr></thead>
@@ -96,7 +102,7 @@ export default async function Dashboard() {
             </tr>
           ))}</tbody>
         </table></div>
-      </section>
+      </section>}
     </div>
   );
 }

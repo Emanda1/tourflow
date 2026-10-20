@@ -1,8 +1,11 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { money } from "@/lib/format";
 
-export default function ToursPage() {
+export default async function ToursPage() {
+  const user = await requireUser("tours.edit");
   const tours = db.prepare(`SELECT t.*,
       (SELECT COUNT(*) FROM departures d WHERE d.tour_id = t.id AND d.start_date >= date('now') AND d.status = 'open') AS upcoming
     FROM tours t ORDER BY t.title`).all();

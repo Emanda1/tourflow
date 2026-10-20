@@ -1,20 +1,24 @@
 import { NextResponse } from "next/server";
-import { startCheckout } from "@/lib/checkout";
+import { startCheckout, bookingPath } from "@/lib/checkout";
+import { getBookingForCustomer } from "@/lib/access";
 import { toPesewas } from "@/lib/format";
+import { rateLimit, MINUTE } from "@/lib/ratelimit";
+import { clientIp } from "@/lib/request";
+import { appUrl } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
   const url = new URL(request.url);
-  const ref = url.searchParams.get("ref");
+  const to = (path) => NextResponse.redirect(new URL(path, appUrl), 303);
+  const booking = getBookingForCustomer(url.searchParams.get("ref"), url.searchParams.get("k"));
+  if (!booking) return to("/find");
+  if (!rateLimit(`pay:${await clientIp()}`, 20, 10 * MINUTE)) return to(bookingPath(booking, "&error=busy"));
   const cedis = url.searchParams.get("cedis");
-  const amount = cedis ? toPesewas(cedis) : null;
-  if (!ref) return NextResponse.redirect(new URL("/", request.url));
   try {
-    const target = await startCheckout(ref, amount);
-    return NextResponse.redirect(new URL(target, request.url));
+    return to(await startCheckout(booking, cedis ? toPesewas(cedis) : null));
   } catch (e) {
-    console.error("Payment start failed:", e);
-    return NextResponse.redirect(new URL(`/booking/${ref}?error=payment`, request.url));
+    console.error("Payment start failed:", e.message);
+    return to(bookingPath(booking, "&error=payment"));
   }
 }

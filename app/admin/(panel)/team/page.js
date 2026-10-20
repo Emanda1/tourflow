@@ -1,7 +1,11 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { db } from "@/lib/db";
 import { addStaff, addVehicle } from "../../actions";
 
-export default function TeamPage() {
+export default async function TeamPage({ searchParams }) {
+  const user = await requireUser("team.manage");
+  const sp = await searchParams;
   const staff = db.prepare(`SELECT s.*, (SELECT COUNT(*) FROM departures d WHERE (d.guide_id = s.id OR d.driver_id = s.id) AND d.start_date >= date('now') AND d.status != 'cancelled') AS upcoming
     FROM staff s ORDER BY role, name`).all();
   const vehicles = db.prepare(`SELECT v.*, (SELECT COUNT(*) FROM departures d WHERE d.vehicle_id = v.id AND d.start_date >= date('now') AND d.status != 'cancelled') AS upcoming
@@ -9,6 +13,7 @@ export default function TeamPage() {
   return (
     <div className="stack">
       <h1>Guides, drivers & vehicles</h1>
+      {sp.error && <div className="alert alert-error" role="alert">{String(sp.error).slice(0, 200)}</div>}
       <div className="two-col">
         <section className="card">
           <div className="card-pad"><h2 style={{ margin: 0 }}>Team</h2></div>

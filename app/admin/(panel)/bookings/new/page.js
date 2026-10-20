@@ -1,8 +1,11 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { listDepartures } from "@/lib/db";
 import { money, dateRange } from "@/lib/format";
 import ManualBookingForm from "./ManualBookingForm";
 
-export default function NewBooking() {
+export default async function NewBooking() {
+  const user = await requireUser("bookings.edit");
   const departures = listDepartures({ upcomingOnly: true, openOnly: true }).map((d) => ({
     id: d.id,
     label: `${d.tour_title} · ${dateRange(d.start_date, d.end_date)} · ${d.capacity - d.booked} seats left · ${money(d.price)}`,

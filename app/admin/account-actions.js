@@ -1,0 +1,206 @@
+"use server";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { db, setSettings } from "@/lib/db";
+import { requireUser, createSession, destroySession, destroyAllSessions, currentUser, userCount, MAX_FAILED_LOGINS, LOCK_MINUTES } from "@/lib/auth";
+import { hashPassword, verifyPassword, passwordProblem } from "@/lib/password";
+import { ROLES } from "@/lib/permissions";
+import { audit } from "@/lib/audit";
+import { text, int, isEmail, isPhone, formValues } from "@/lib/validate";
+import { rateLimit, MINUTE } from "@/lib/ratelimit";
+import { clientIp } from "@/lib/request";
+import { saveImage, UploadError } from "@/lib/uploads";
+import { runBackup } from "@/lib/backup";
+
+const fail = (path, msg) => redirect(`${path}?error=${encodeURIComponent(msg)}`);
+// Used to make failed logins for unknown emails take as long as real ones.
+const DUMMY_HASH = hashPassword("not-a-real-password-placeholder");
+
+/* ---------- Sign in / out ---------- */
+
+export async function login(prev, formData) {
+  const ip = await clientIp();
+  const email = text(formData, "email", { max: 160 }).toLowerCase();
+  const password = String(formData.get("password") || "").slice(0, 200);
+  if (!rateLimit(`login-ip:${ip}`, 20, 15 * MINUTE)) return { error: "Too many sign-in attempts. Please wait 15 minutes.", values: formValues(formData) };
+
+  const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
+  const generic = { error: "Email or password is incorrect." };
+  if (!user) { verifyPassword(password, DUMMY_HASH); return { ...generic, values: formValues(formData) }; }
+  if (!user.active) return { ...generic, values: formValues(formData) };
+  if (user.locked_until && user.locked_until > new Date().toISOString()) {
+    return { error: `This account is locked after too many wrong passwords. Try again after ${LOCK_MINUTES} minutes, or ask the owner to reset it.` };
+  }
+  if (!verifyPassword(password, user.password_hash)) {
+    const fails = user.failed_logins + 1;
+    const lock = fails >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCK_MINUTES * MINUTE).toISOString() : null;
+    db.prepare("UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?").run(lock ? 0 : fails, lock, user.id);
+    await audit({ id: user.id, name: user.name }, lock ? "login.locked" : "login.failed", email);
+    return { ...generic, values: formValues(formData) };
+  }
+  db.prepare("UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = datetime('now') WHERE id = ?").run(user.id);
+  await createSession(user.id);
+  await audit(user, "login.success", email);
+  redirect(user.must_change_password ? "/admin/account?first=1" : "/admin");
+}
+
+export async function logout() {
+  const user = await currentUser();
+  await destroySession();
+  if (user) await audit(user, "logout");
+  redirect("/admin/login");
+}
+
+/* ---------- First-time setup ---------- */
+
+export async function setupOwner(prev, formData) {
+  if (userCount() > 0) redirect("/admin/login");
+  const code = process.env.SETUP_CODE;
+  if (process.env.NODE_ENV === "production") {
+    if (!code) return { error: "Set SETUP_CODE in the server settings first, then restart.", values: formValues(formData) };
+    if (!rateLimit(`setup:${await clientIp()}`, 10, 15 * MINUTE)) return { error: "Too many attempts. Wait 15 minutes.", values: formValues(formData) };
+    if (String(formData.get("code") || "") !== code) return { error: "Setup code is incorrect.", values: formValues(formData) };
+  }
+  const name = text(formData, "name", { max: 120 });
+  const email = text(formData, "email", { max: 160 }).toLowerCase();
+  const password = String(formData.get("password") || "");
+  if (!name || !isEmail(email)) return { error: "Enter your name and a valid email.", values: formValues(formData) };
+  const problem = passwordProblem(password, { name, email });
+  if (problem) return { error: problem, values: formValues(formData) };
+  if (password !== formData.get("confirm")) return { error: "The two passwords don't match.", values: formValues(formData) };
+
+  const created = db.transaction(() => {
+    if (db.prepare("SELECT COUNT(*) AS n FROM users").get().n > 0) return null;
+    return db.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?, 'owner')").run(name, email, hashPassword(password)).lastInsertRowid;
+  }).immediate();
+  if (!created) redirect("/admin/login");
+  await createSession(created);
+  await audit({ id: created, name }, "setup.owner", email);
+  redirect("/admin/settings?welcome=1");
+}
+
+/* ---------- My account ---------- */
+
+export async function changePassword(prev, formData) {
+  const user = await requireUser();
+  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(user.id);
+  if (!verifyPassword(String(formData.get("current") || ""), row.password_hash)) return { error: "Your current password is incorrect." };
+  const pw = String(formData.get("password") || "");
+  const problem = passwordProblem(pw, { name: row.name, email: row.email });
+  if (problem) return { error: problem };
+  if (pw !== formData.get("confirm")) return { error: "The two new passwords don't match." };
+  if (verifyPassword(pw, row.password_hash)) return { error: "Choose a password different from the current one." };
+  db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(hashPassword(pw), user.id);
+  destroyAllSessions(user.id); // sign out everywhere else
+  await createSession(user.id);
+  await audit(user, "password.change");
+  return { ok: "Password changed. Other devices have been signed out." };
+}
+
+/* ---------- Staff accounts (owner only) ---------- */
+
+export async function createUser(prev, formData) {
+  const owner = await requireUser("staff.manage");
+  const name = text(formData, "name", { max: 120 });
+  const email = text(formData, "email", { max: 160 }).toLowerCase();
+  const role = text(formData, "role", { max: 20 });
+  const password = String(formData.get("password") || "");
+  if (!name || !isEmail(email)) return { error: "Enter a name and a valid email.", values: formValues(formData) };
+  if (!ROLES[role]) return { error: "Choose a role.", values: formValues(formData) };
+  const problem = passwordProblem(password, { name, email });
+  if (problem) return { error: `Temporary password: ${problem}` };
+  try {
+    db.prepare("INSERT INTO users (name, email, password_hash, role, must_change_password) VALUES (?,?,?,?,1)").run(name, email, hashPassword(password), role);
+  } catch (e) {
+    if (String(e.message).includes("UNIQUE")) return { error: "Someone already uses that email.", values: formValues(formData) };
+    throw e;
+  }
+  await audit(owner, "staff.create", `${name} <${email}> as ${role}`);
+  revalidatePath("/admin/staff");
+  return { ok: `${name} can now sign in. They'll be asked to choose their own password.` };
+}
+
+export async function updateUser(formData) {
+  const owner = await requireUser("staff.manage");
+  const id = int(formData, "id", { min: 1 });
+  const target = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+  if (!target) redirect("/admin/staff");
+  const action = text(formData, "action", { max: 20 });
+  const owners = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'owner' AND active = 1").get().n;
+  const isLastOwner = target.role === "owner" && target.active && owners <= 1;
+
+  if (action === "role") {
+    const role = text(formData, "role", { max: 20 });
+    if (!ROLES[role]) fail("/admin/staff", "Unknown role.");
+    if (isLastOwner && role !== "owner") fail("/admin/staff", "There must always be at least one owner.");
+    db.prepare("UPDATE users SET role = ? WHERE id = ?").run(role, id);
+    destroyAllSessions(id);
+    await audit(owner, "staff.role", `${target.email} → ${role}`);
+  } else if (action === "deactivate") {
+    if (isLastOwner || id === owner.id) fail("/admin/staff", "You can't deactivate yourself or the last owner.");
+    db.prepare("UPDATE users SET active = 0 WHERE id = ?").run(id);
+    destroyAllSessions(id);
+    await audit(owner, "staff.deactivate", target.email);
+  } else if (action === "activate") {
+    db.prepare("UPDATE users SET active = 1, failed_logins = 0, locked_until = NULL WHERE id = ?").run(id);
+    await audit(owner, "staff.activate", target.email);
+  } else if (action === "reset") {
+    const pw = String(formData.get("password") || "");
+    const problem = passwordProblem(pw, { name: target.name, email: target.email });
+    if (problem) fail("/admin/staff", `New password: ${problem}`);
+    db.prepare("UPDATE users SET password_hash = ?, must_change_password = 1, failed_logins = 0, locked_until = NULL WHERE id = ?").run(hashPassword(pw), id);
+    destroyAllSessions(id);
+    await audit(owner, "staff.reset_password", target.email);
+  } else if (action === "signout") {
+    destroyAllSessions(id);
+    await audit(owner, "staff.signout", target.email);
+  }
+  revalidatePath("/admin/staff");
+  redirect("/admin/staff?done=1");
+}
+
+/* ---------- Company settings (owner only) ---------- */
+
+export async function saveSettings(formData) {
+  const owner = await requireUser("settings.manage");
+  const phone = text(formData, "company_phone", { max: 30 });
+  const whatsapp = text(formData, "company_whatsapp", { max: 30 });
+  const email = text(formData, "company_email", { max: 160 });
+  const color = text(formData, "brand_color", { max: 7 });
+  if (!text(formData, "company_name", { max: 80 })) fail("/admin/settings", "Enter the company name.");
+  if (phone && !isPhone(phone)) fail("/admin/settings", "Company phone doesn't look right.");
+  if (whatsapp && !isPhone(whatsapp)) fail("/admin/settings", "WhatsApp number doesn't look right.");
+  if (email && !isEmail(email)) fail("/admin/settings", "Company email doesn't look right.");
+
+  let logo;
+  try {
+    logo = await saveImage(formData.get("logo"));
+  } catch (e) {
+    if (e instanceof UploadError) fail("/admin/settings", e.message);
+    throw e;
+  }
+  const values = {
+    company_name: text(formData, "company_name", { max: 80 }),
+    company_phone: phone,
+    company_whatsapp: whatsapp,
+    company_email: email,
+    company_address: text(formData, "company_address", { max: 200 }),
+    brand_color: /^#[0-9a-f]{6}$/i.test(color) ? color : "",
+    cancellation_policy: text(formData, "cancellation_policy", { max: 2000 }),
+  };
+  if (logo) values.logo_url = logo;
+  if (formData.get("remove_logo")) values.logo_url = "";
+  setSettings(values);
+  await audit(owner, "settings.update", Object.keys(values).join(", "));
+  revalidatePath("/", "layout");
+  redirect("/admin/settings?saved=1");
+}
+
+/* ---------- Backups (owner only) ---------- */
+
+export async function backupNow() {
+  const owner = await requireUser("backups.manage");
+  const file = await runBackup();
+  await audit(owner, "backup.create", file);
+  redirect("/admin/backups?done=1");
+}

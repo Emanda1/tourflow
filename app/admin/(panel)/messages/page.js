@@ -1,8 +1,11 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { db } from "@/lib/db";
 import { date } from "@/lib/format";
 import Link from "next/link";
 
-export default function MessagesPage() {
+export default async function MessagesPage() {
+  const user = await requireUser("messages.view");
   const rows = db.prepare(`SELECT n.*, b.ref FROM notifications n LEFT JOIN bookings b ON b.id = n.booking_id ORDER BY n.id DESC LIMIT 200`).all();
   const smsLive = Boolean(process.env.ARKESEL_API_KEY);
   return (

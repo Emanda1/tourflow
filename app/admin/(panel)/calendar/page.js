@@ -1,3 +1,5 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import Link from "next/link";
 import { db } from "@/lib/db";
 
@@ -5,6 +7,7 @@ const COLORS = ["#0f766e", "#b45309", "#7c3aed", "#be185d", "#1d4ed8", "#15803d"
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export default async function CalendarPage({ searchParams }) {
+  const user = await requireUser("trips.view");
   const { m } = await searchParams;
   const now = new Date();
   const [y, mo] = (m && /^\d{4}-\d{2}$/.test(m) ? m : iso(now).slice(0, 7)).split("-").map(Number);

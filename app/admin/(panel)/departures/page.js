@@ -1,8 +1,11 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import Link from "next/link";
 import { listDepartures } from "@/lib/db";
 import { dateRange, money } from "@/lib/format";
 
 export default async function DeparturesPage({ searchParams }) {
+  const user = await requireUser("trips.view");
   const { past } = await searchParams;
   const deps = listDepartures({ upcomingOnly: !past });
   return (

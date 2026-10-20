@@ -20,7 +20,9 @@ A complete booking and management system for travel and tour companies, built wi
 - CSV export of bookings and trip manifests (opens in Excel)
 - Trip requests inbox with one-tap WhatsApp/call and status tracking
 - Upload tour cover photos
-- Bookings: search, filter, record cash/MoMo/bank payments, confirm or cancel, send balance reminders
+- Staff accounts with roles, activity log, automatic daily backups, company settings (logo, colours, policies)
+- Printable receipts and optional email receipts
+- Bookings: search, filter, record cash/MoMo/bank payments, refunds, confirm or cancel with a reason, send balance reminders
 - Manual bookings for walk-in, phone and WhatsApp customers
 - Tours: create and edit tours, prices, deposit %, itinerary, and add departure dates
 - Trips & manifests: searchable passenger list, one-tap check-in with live progress, assign guide/driver/vehicle, print manifest, SMS all travellers
@@ -39,39 +41,46 @@ You need **Node.js 20 or newer** (https://nodejs.org – choose the LTS version)
    npm run dev
    ```
 3. Open http://localhost:3000 for the customer website.
-4. Open http://localhost:3000/admin for the staff area. Default password: **admin123**
+4. Open http://localhost:3000/admin. The first time, you'll create the **owner account** (your name, email and a password of 10+ characters). After that, add staff under **Staff accounts**.
 
 The database is created automatically at `data/tourflow.db` with sample tours and bookings.
 To start fresh, stop the server and run `npm run reset-db`. (If you ran an earlier version, do this once to load the new sample history for the charts.)
 
-## Settings (`.env.local`)
+## Settings
 
-The app runs fine without this file (it uses demo settings). To customise it, make a copy of `.env.example`, name it `.env.local`, and edit the values.
+Company name, logo, contact details, brand colour and cancellation policy are edited in **Admin → Settings**.
 
-| Setting | What it does |
+Secret keys (Paystack, SMS, email) go in `.env.local` locally, or in your hosting dashboard when live. Copy `.env.example` to `.env.local` to start; every setting is explained inside. On your own computer, payments run in **demo mode** (no real money). On a live server demo mode is off.
+
+## Going live
+
+Read **[DEPLOYMENT.md](DEPLOYMENT.md)**: hosting options, server settings, connecting Paystack, first-time setup, backups and a go-live checklist.
+
+Read **[SECURITY.md](SECURITY.md)**: what the system does to protect the business and its customers, and what the operator must do.
+
+## Staff roles
+
+| Role | Can do |
 |---|---|
-| `COMPANY_NAME`, `COMPANY_PHONE`, `COMPANY_EMAIL` | Shown on the website and in SMS |
-| `ADMIN_PASSWORD` | Staff login password. **Change it before going live.** |
-| `SESSION_SECRET` | Any long random text |
-| `PAYSTACK_SECRET_KEY` | Turns on real MoMo & card payments. Empty = demo payments |
-| `APP_URL` | Your live website address (used for Paystack callbacks) |
-| `ARKESEL_API_KEY`, `SMS_SENDER_ID` | Turns on real SMS. Empty = messages only logged |
+| Owner | Everything, including staff accounts, settings, backups and the activity log |
+| Manager | Everything except staff, settings and backups. Can refund and export. |
+| Sales / front desk | Bookings, payments, customers, trip requests. No refunds, no tour editing. |
+| Operations / guide | Trips, manifests, check-in, guides and vehicles. Cannot see revenue or take payments. |
 
-Restart `npm run dev` after changing `.env.local`.
+## Tests
 
-### Taking real payments with Paystack
-1. Create an account at https://paystack.com and get your **test** secret key (starts with `sk_test_`).
-2. Put it in `PAYSTACK_SECRET_KEY` and restart. Bookings now go to Paystack's checkout.
-3. In the Paystack dashboard, set the webhook URL to `https://YOUR-DOMAIN/api/paystack/webhook`.
-4. When ready, switch to your live key (`sk_live_…`).
+```
+npm test
+```
+Runs the automated checks for passwords, permissions, input validation, CSV safety, booking rules, refunds and seat release.
 
 ## Project structure
 
 ```
 app/
   (site)/          customer website (home, tour page, booking, payment, my booking)
-  admin/           staff dashboard and all admin actions (actions.js)
-  api/             payment start, Paystack callback and webhook
+  admin/           staff area; actions.js (bookings, trips) and account-actions.js (sign-in, staff, settings)
+  api/             payment start, Paystack callback and webhook, health check
 components/        shared forms and cards
 lib/
   db.js            database schema and queries
@@ -80,18 +89,23 @@ lib/
   checkout.js      Paystack / demo payment flow
   paystack.js      Paystack API
   notify.js        SMS (Arkesel)
-data/              SQLite database file (created on first run)
+  mailer.js        email receipts (SMTP)
+  auth.js          sessions; password.js hashing; permissions.js roles
+  validate.js      input checks; ratelimit.js; uploads.js image checks
+  backup.js, jobs.js  daily backups and releasing unpaid seats
+tests/             automated tests (npm test)
+data/              database, uploads and backups (created on first run, never committed)
 ```
 
 All money is stored in **pesewas** (GH₵ 1 = 100) to avoid rounding errors.
 
 ## Business rules
-- A booking holds its seats as soon as it's made (status **pending**).
+- A booking holds its seats as soon as it's made (status **pending**). Unpaid online bookings release their seats after 2 hours.
 - It becomes **confirmed** automatically once the customer has paid at least the deposit.
 - Cancelling a booking frees its seats.
 - Customers are matched by phone number, so repeat customers build up a history.
 
-## Going live (next steps)
-- Host on a VPS or a Node host (Railway, Render, DigitalOcean). SQLite needs a persistent disk;
-  for serverless hosts like Vercel/Netlify, move the database to Postgres (e.g. Supabase).
-- Add staff accounts with roles, email notifications, and an agent/affiliate portal.
+## Ideas for later
+- Two-factor sign-in for owners
+- Agent / affiliate portal with commissions
+- PostgreSQL for multi-server hosting

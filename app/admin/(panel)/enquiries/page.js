@@ -1,3 +1,5 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { db } from "@/lib/db";
 import { date } from "@/lib/format";
 import { setEnquiryStatus } from "../../actions";
@@ -5,6 +7,7 @@ import { setEnquiryStatus } from "../../actions";
 const STATUSES = [["new", "New"], ["contacted", "Contacted"], ["won", "Booked"], ["lost", "Not interested"]];
 
 export default async function EnquiriesPage({ searchParams }) {
+  const user = await requireUser("enquiries.manage");
   const { s = "open" } = await searchParams;
   const all = db.prepare("SELECT * FROM enquiries ORDER BY id DESC").all();
   const rows = all.filter((e) => (s === "open" ? ["new", "contacted"].includes(e.status) : s === "all" ? true : e.status === s));

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getDeparture } from "@/lib/db";
 import { money, dateRange } from "@/lib/format";
 import BookingForm from "../BookingForm";
+import { onlinePaymentsAvailable } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Book your trip" };
@@ -21,7 +22,7 @@ export default async function BookPage({ params, searchParams }) {
       <div className="two-col">
         {dep.status === "open" && seatsLeft > 0 ? (
           <BookingForm departureId={dep.id} price={dep.price} depositPercent={dep.deposit_percent} seatsLeft={seatsLeft}
-            initialCount={Number(n) || 1} tourTitle={dep.tour_title} dates={dateRange(dep.start_date, dep.end_date)} />
+            canPayOnline={onlinePaymentsAvailable} initialCount={Number(n) || 1} tourTitle={dep.tour_title} dates={dateRange(dep.start_date, dep.end_date)} />
         ) : (
           <div className="card card-pad"><p>Sorry, this date is no longer available.</p><Link className="btn" href={`/tours/${dep.tour_slug}`}>See other dates</Link></div>
         )}

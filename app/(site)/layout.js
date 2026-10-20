@@ -7,7 +7,7 @@ export default function SiteLayout({ children }) {
     <>
       <header className="site-header">
         <div className="container">
-          <Link href="/" className="logo"><span className="logo-mark" />{company.name}</Link>
+          <Link href="/" className="logo">{company.logo ? <img src={company.logo} alt="" style={{ height: 32, width: "auto" }} /> : <span className="logo-mark" />}{company.name}</Link>
           <nav className="nav">
             <Link href="/#tours">Tours</Link>
             <Link href="/custom-trip">Custom trip</Link>
@@ -23,7 +23,7 @@ export default function SiteLayout({ children }) {
             <strong>{company.name}</strong><br />
             {company.phone} · {company.email}
           </div>
-          <div className="small">Secure payments by mobile money and card · <Link href="/admin">Staff login</Link></div>
+          <div className="small">Secure payments by mobile money and card · <Link href="/privacy">Privacy</Link> · <Link href="/terms">Terms</Link> · <Link href="/admin">Staff login</Link></div>
         </div>
       </footer>
     </>

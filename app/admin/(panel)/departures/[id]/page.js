@@ -1,3 +1,5 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db, getDeparture, listBookings } from "@/lib/db";
@@ -10,6 +12,7 @@ import ManifestTable from "@/components/ManifestTable";
 import Toast from "@/components/Toast";
 
 export default async function DepartureDetail({ params, searchParams }) {
+  const user = await requireUser("trips.view");
   const { id } = await params;
   const sp = await searchParams;
   const d = getDeparture(Number(id));
@@ -27,6 +30,7 @@ export default async function DepartureDetail({ params, searchParams }) {
     <div className="stack">
       <Link href="/admin/departures" className="small no-print">← All trips</Link>
       <Toast message={sp.saved ? "Trip saved" : sp.sent ? `Message sent to ${sp.sent} booking(s)` : null} />
+      {sp.error && <div className="alert alert-error" role="alert">{String(sp.error).slice(0, 200)}</div>}
       <div className="spread">
         <div>
           <h1 style={{ margin: 0 }}>{d.tour_title}</h1>
@@ -48,27 +52,27 @@ export default async function DepartureDetail({ params, searchParams }) {
             <span className="small muted">{company.name} · Guide: {d.guide_name || "—"} · Driver: {d.driver_name || "—"} · Vehicle: {d.vehicle_name ? `${d.vehicle_name} (${d.vehicle_plate})` : "—"}</span>
           </div>
           <div className="row no-print">
-            <a className="btn btn-secondary btn-sm" href={`/admin/export/manifest/${d.id}`}>Download CSV</a>
+            {can(user, "data.export") && <a className="btn btn-secondary btn-sm" href={`/admin/export/manifest/${d.id}`}>Download CSV</a>}
             <PrintButton />
           </div>
         </div>
-        <ManifestTable travellers={travellers.map((t) => ({ ...t, checked_in: !!t.checked_in, balance: bookings.find((b) => b.id === t.booking_id)?.balance ?? 0 }))} />
+        <ManifestTable canCheckIn={can(user, "trips.checkin")} travellers={travellers.map((t) => ({ ...t, checked_in: !!t.checked_in, balance: bookings.find((b) => b.id === t.booking_id)?.balance ?? 0 }))} />
       </section>
 
       <div className="two-col no-print">
         <section className="card card-pad">
           <h2>Trip details & assignments</h2>
-          <DepartureForm tourId={d.tour_id} departure={d} staff={staff} vehicles={vehicles} />
+          {can(user, "trips.edit") ? <DepartureForm tourId={d.tour_id} departure={d} staff={staff} vehicles={vehicles} /> : <p className="muted">Pickup: {d.pickup_point || "TBC"} {d.pickup_time} · {d.notes || "No notes"}</p>}
         </section>
-        <form action={messageDeparture} className="card card-pad">
+        {can(user, "trips.message") && <form action={messageDeparture} className="card card-pad">
           <h2>Message all travellers</h2>
           <p className="small muted">Sends an SMS to the lead contact of every confirmed booking on this trip.</p>
           <input type="hidden" name="departure_id" value={d.id} />
           <div className="field">
-            <textarea name="message" defaultValue={`Reminder: ${d.tour_title} departs ${date(d.start_date)}${d.pickup_time ? ` at ${d.pickup_time}` : ""} from ${d.pickup_point || "the usual pickup point"}. Please arrive 15 minutes early. - ${company.name}`} />
+            <textarea name="message" maxLength={480} defaultValue={`Reminder: ${d.tour_title} departs ${date(d.start_date)}${d.pickup_time ? ` at ${d.pickup_time}` : ""} from ${d.pickup_point || "the usual pickup point"}. Please arrive 15 minutes early. - ${company.name}`} />
           </div>
           <button className="btn btn-block">Send SMS</button>
-        </form>
+        </form>}
       </div>
     </div>
   );

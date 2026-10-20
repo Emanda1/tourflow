@@ -1,10 +1,17 @@
 "use server";
 import { redirect } from "next/navigation";
-import { createBooking, BookingError } from "@/lib/bookings";
-import { startCheckout } from "@/lib/checkout";
+import { createBooking, BookingError, MAX_TRAVELLERS } from "@/lib/bookings";
+import { startCheckout, bookingPath, CheckoutError } from "@/lib/checkout";
+import { rateLimit, HOUR } from "@/lib/ratelimit";
+import { clientIp } from "@/lib/request";
+import { onlinePaymentsAvailable } from "@/lib/config";
+import { expireUnpaidBookings } from "@/lib/db";
 
 export async function submitBooking(prevState, formData) {
-  const count = Math.max(1, Math.min(30, Number(formData.get("count")) || 1));
+  if (formData.get("website")) return { error: "Something went wrong. Please try again." }; // spam trap
+  if (!rateLimit(`book:${await clientIp()}`, 10, HOUR)) return { error: "Too many bookings from your connection. Please call us to complete your booking." };
+
+  const count = Math.max(1, Math.min(MAX_TRAVELLERS, Number(formData.get("count")) || 1));
   const name = String(formData.get("name") || "");
   const travellers = Array.from({ length: count }, (_, i) => ({
     name: String(formData.get(`traveller_${i}`) || (i === 0 ? name : "")),
@@ -12,6 +19,7 @@ export async function submitBooking(prevState, formData) {
   }));
   if (travellers.some((t) => !t.name.trim())) return { error: "Please enter a name for every traveller." };
 
+  expireUnpaidBookings(); // free seats from abandoned bookings before checking availability
   let booking;
   try {
     booking = createBooking({
@@ -27,12 +35,15 @@ export async function submitBooking(prevState, formData) {
     if (e instanceof BookingError) return { error: e.message };
     throw e;
   }
-  let target = `/booking/${booking.ref}`;
-  try {
-    target = await startCheckout(booking.ref);
-  } catch (e) {
-    console.error("Payment start failed:", e);
-    target = `/booking/${booking.ref}?error=payment`;
+
+  let target = bookingPath(booking);
+  if (onlinePaymentsAvailable) {
+    try {
+      target = await startCheckout(booking);
+    } catch (e) {
+      console.error("Payment start failed:", e.message);
+      target = bookingPath(booking, e instanceof CheckoutError ? "&error=payment" : "&error=payment");
+    }
   }
   redirect(target);
 }

@@ -1,24 +1,28 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { db, getBooking } from "@/lib/db";
-import { completePayment } from "@/lib/checkout";
+import { completePayment, bookingPath } from "@/lib/checkout";
+import { demoPaymentsAllowed } from "@/lib/config";
 import { money } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Payment" };
+export const metadata = { title: "Payment", robots: { index: false } };
 
 async function approve(formData) {
   "use server";
-  const result = await completePayment(String(formData.get("reference")), { demo: true });
-  redirect(`/booking/${result.booking.ref}?paid=1`);
+  if (!demoPaymentsAllowed) notFound();
+  const result = await completePayment(String(formData.get("reference") || ""), { demo: true });
+  if (!result) notFound();
+  redirect(bookingPath(result.booking, "&paid=1"));
 }
 
 export default async function DemoPay({ params }) {
+  if (!demoPaymentsAllowed) notFound();
   const { reference } = await params;
-  const payment = db.prepare("SELECT * FROM payments WHERE reference = ?").get(reference);
+  const payment = db.prepare("SELECT * FROM payments WHERE reference = ? AND method = 'demo'").get(reference);
   if (!payment) notFound();
   const booking = getBooking(payment.booking_id);
-  if (payment.status === "success") redirect(`/booking/${booking.ref}`);
+  if (payment.status === "success") redirect(bookingPath(booking));
 
   return (
     <main className="page container" style={{ maxWidth: 520 }}>
@@ -43,7 +47,7 @@ export default async function DemoPay({ params }) {
         </div>
         <button className="btn btn-block">Approve payment</button>
         <p className="small muted" style={{ textAlign: "center", marginTop: 12 }}>
-          <Link href={`/booking/${booking.ref}`}>Cancel and pay later</Link>
+          <Link href={bookingPath(booking)}>Cancel and pay later</Link>
         </p>
       </form>
     </main>

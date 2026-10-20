@@ -5,7 +5,7 @@ import { submitBooking } from "./actions";
 const fmt = (p) => "GH₵ " + (p / 100).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const STEPS = ["Travellers", "Contact", "Payment"];
 
-export default function BookingForm({ departureId, price, depositPercent, seatsLeft, initialCount = 1, tourTitle, dates }) {
+export default function BookingForm({ canPayOnline = true, departureId, price, depositPercent, seatsLeft, initialCount = 1, tourTitle, dates }) {
   const [state, action, pending] = useActionState(submitBooking, null);
   const [step, setStep] = useState(0);
   const [count, setCount] = useState(Math.min(Math.max(1, initialCount), seatsLeft));
@@ -44,6 +44,7 @@ export default function BookingForm({ departureId, price, depositPercent, seatsL
       {state?.error && <div className="alert alert-error">{state.error}</div>}
       <input type="hidden" name="departureId" value={departureId} />
       <input type="hidden" name="count" value={count} />
+      <div className="hp" aria-hidden="true"><label>Leave this empty<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
 
       {/* Step 1: travellers */}
       <div ref={(el) => (panels.current[0] = el)} hidden={step !== 0}>
@@ -60,7 +61,7 @@ export default function BookingForm({ departureId, price, depositPercent, seatsL
           <div className="form-grid traveller-row" key={i}>
             <div className="field">
               <label htmlFor={`t${i}`}>Traveller {i + 1} full name {i === 0 && <span className="muted small">(lead traveller)</span>}</label>
-              <input id={`t${i}`} name={`traveller_${i}`} value={names[i] || ""} onChange={(e) => setName(i, e.target.value)} required autoComplete={i === 0 ? "name" : "off"} />
+              <input id={`t${i}`} name={`traveller_${i}`} value={names[i] || ""} onChange={(e) => setName(i, e.target.value)} required maxLength={120} autoComplete={i === 0 ? "name" : "off"} />
             </div>
             <div className="field">
               <label htmlFor={`tp${i}`}>Phone (optional)</label>
@@ -101,7 +102,7 @@ export default function BookingForm({ departureId, price, depositPercent, seatsL
             <span>Pay {depositPercent}% deposit<br /><strong>{fmt(deposit)}</strong><br /><span className="muted small">Pay {fmt(total - deposit)} in instalments before the trip</span></span>
           </label>
         </div>
-        <div className="field"><label htmlFor="notes">Special requests (optional)</label><textarea id="notes" name="notes" placeholder="Dietary needs, pickup location, room sharing…" /></div>
+        <div className="field"><label htmlFor="notes">Special requests (optional)</label><textarea id="notes" name="notes" maxLength={1000} placeholder="Dietary needs, pickup location, room sharing…" /></div>
 
         <div className="review">
           <h4>Review</h4>
@@ -119,9 +120,9 @@ export default function BookingForm({ departureId, price, depositPercent, seatsL
         {step > 0 ? <button type="button" className="btn btn-secondary" onClick={() => setStep(step - 1)}>← Back</button> : <span />}
         {step < 2
           ? <button key="next" type="button" className="btn" onClick={next}>Continue →</button>
-          : <button key="submit" type="submit" className="btn btn-lg" disabled={pending}>{pending ? "Reserving your seats…" : `Pay ${fmt(plan === "deposit" ? deposit : total)}`}</button>}
+          : <button key="submit" type="submit" className="btn btn-lg" disabled={pending}>{pending ? "Reserving your seats…" : canPayOnline ? `Pay ${fmt(plan === "deposit" ? deposit : total)}` : "Reserve my seats"}</button>}
       </div>
-      {step === 2 && <p className="small muted" style={{ marginTop: 10, textAlign: "right" }}>MTN MoMo · Telecel Cash · AirtelTigo Money · Card</p>}
+      {step === 2 && <p className="small muted" style={{ marginTop: 10, textAlign: "right" }}>{canPayOnline ? "MTN MoMo · Telecel Cash · AirtelTigo Money · Card" : "We will contact you to arrange payment."} By booking you agree to our <a href="/terms" target="_blank">booking terms</a>.</p>}
     </form>
   );
 }

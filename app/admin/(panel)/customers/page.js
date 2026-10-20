@@ -1,12 +1,15 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { db } from "@/lib/db";
 import { money, date } from "@/lib/format";
 import Link from "next/link";
 
 export default async function CustomersPage({ searchParams }) {
+  const user = await requireUser("customers.view");
   const { q = "" } = await searchParams;
   const customers = db.prepare(`SELECT c.*,
       COUNT(DISTINCT b.id) AS trips,
-      COALESCE((SELECT SUM(p.amount) FROM payments p JOIN bookings b2 ON b2.id = p.booking_id WHERE b2.customer_id = c.id AND p.status = 'success'), 0) AS spent,
+      COALESCE((SELECT SUM(CASE WHEN p.kind = 'refund' THEN -p.amount ELSE p.amount END) FROM payments p JOIN bookings b2 ON b2.id = p.booking_id WHERE b2.customer_id = c.id AND p.status = 'success'), 0) AS spent,
       MAX(d.start_date) AS last_trip
     FROM customers c
     LEFT JOIN bookings b ON b.customer_id = c.id AND b.status != 'cancelled'

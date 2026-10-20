@@ -1,11 +1,14 @@
+import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db, getBooking } from "@/lib/db";
 import { money, date, dateRange } from "@/lib/format";
 import Toast from "@/components/Toast";
-import { addPayment, setBookingStatus, sendReminder } from "../../../actions";
+import { addPayment, addRefund, setBookingStatus, sendReminder } from "../../../actions";
 
 export default async function BookingDetail({ params, searchParams }) {
+  const user = await requireUser("bookings.view");
   const { id } = await params;
   const sp = await searchParams;
   const b = getBooking(Number(id));
@@ -17,7 +20,9 @@ export default async function BookingDetail({ params, searchParams }) {
   return (
     <div className="stack">
       <Link href="/admin/bookings" className="small">← All bookings</Link>
-      <Toast message={sp.created ? "Booking created" : sp.paid ? "Payment recorded and customer notified" : sp.reminded ? "Reminder sent" : null} />
+      <Toast message={sp.created ? "Booking created" : sp.paid ? "Payment recorded and customer notified" : sp.reminded ? "Reminder sent" : sp.refunded ? "Refund recorded" : null} />
+      {sp.error && <div className="alert alert-error" role="alert">{String(sp.error).slice(0, 200)}</div>}
+      {b.status === "cancelled" && b.cancel_reason && <div className="alert alert-info">Cancelled: {b.cancel_reason}</div>}
       <div className="spread">
         <div>
           <h1 style={{ margin: 0 }}>{b.ref}</h1>
@@ -49,13 +54,14 @@ export default async function BookingDetail({ params, searchParams }) {
           <section className="card">
             <div className="card-pad"><h3 style={{ margin: 0 }}>Payments</h3></div>
             <div className="table-wrap"><table>
-              <thead><tr><th>Date</th><th>Method</th><th>Reference</th><th>Status</th><th className="num">Amount</th></tr></thead>
+              <thead><tr><th>Date</th><th>Type</th><th>Method</th><th>Reference / note</th><th>By</th><th>Status</th><th className="num">Amount</th></tr></thead>
               <tbody>
                 {payments.map((p) => (
-                  <tr key={p.id}><td>{date(p.created_at)}</td><td>{p.method}</td><td className="small">{p.reference || p.note || "—"}</td>
-                    <td><span className={`badge badge-${p.status}`}>{p.status}</span></td><td className="num">{money(p.amount)}</td></tr>
+                  <tr key={p.id}><td>{date(p.created_at)}</td><td>{p.kind === "refund" ? <span className="badge badge-cancelled">Refund</span> : "Payment"}</td><td>{p.method}</td>
+                    <td className="small">{[p.reference, p.note].filter(Boolean).join(" · ") || "—"}</td><td className="small">{p.recorded_by || (p.reference ? "Online" : "—")}</td>
+                    <td><span className={`badge badge-${p.status}`}>{p.status}</span></td><td className="num">{p.kind === "refund" ? "−" : ""}{money(p.amount)}</td></tr>
                 ))}
-                {payments.length === 0 && <tr><td colSpan={5} className="muted">No payments yet.</td></tr>}
+                {payments.length === 0 && <tr><td colSpan={7} className="muted">No payments yet.</td></tr>}
               </tbody>
             </table></div>
           </section>
@@ -74,9 +80,10 @@ export default async function BookingDetail({ params, searchParams }) {
               <dt>Paid</dt><dd className="num">{money(b.paid)}</dd>
               <dt>Balance</dt><dd className="num"><strong>{money(b.balance)}</strong></dd>
               <dt>Deposit</dt><dd className="num">{money(b.depositDue)}</dd>
+              {b.refunded > 0 && <><dt>Refunded</dt><dd className="num">{money(b.refunded)}</dd></>}
             </dl>
           </section>
-          {b.status !== "cancelled" && b.balance > 0 && (
+          {can(user, "payments.record") && b.status !== "cancelled" && b.balance > 0 && (
             <form action={addPayment} className="card card-pad">
               <h3>Record a payment</h3>
               <input type="hidden" name="booking_id" value={b.id} />
@@ -84,24 +91,46 @@ export default async function BookingDetail({ params, searchParams }) {
               <div className="field"><label>Method</label>
                 <select name="method"><option value="momo">Mobile money</option><option value="cash">Cash</option><option value="bank">Bank transfer</option><option value="card">Card</option></select>
               </div>
-              <div className="field"><label>Note / transaction ID</label><input name="note" /></div>
+              <div className="field"><label>Note / MoMo transaction ID</label><input name="note" maxLength={200} /></div>
               <button className="btn btn-block">Save payment</button>
             </form>
           )}
+          {can(user, "payments.refund") && b.paid > 0 && (
+            <details className="card card-pad">
+              <summary><strong>Record a refund</strong></summary>
+              <form action={addRefund} style={{ marginTop: 12 }}>
+                <input type="hidden" name="booking_id" value={b.id} />
+                <div className="field"><label>Amount refunded (GH₵)</label><input name="amount" type="number" step="0.01" min="0.01" max={b.paid / 100} required /></div>
+                <div className="field"><label>Paid back by</label>
+                  <select name="method"><option value="momo">Mobile money</option><option value="cash">Cash</option><option value="bank">Bank transfer</option><option value="card">Card (via Paystack)</option></select>
+                </div>
+                <div className="field"><label>Reason</label><input name="note" required maxLength={200} placeholder="e.g. Cancelled 3 weeks before trip" /></div>
+                <p className="small muted">This records the refund in the system. Send the money itself through MoMo, the bank or the Paystack dashboard.</p>
+                <button className="btn btn-danger btn-block">Save refund</button>
+              </form>
+            </details>
+          )}
           <section className="card card-pad stack">
             <h3 style={{ margin: 0 }}>Actions</h3>
-            {b.balance > 0 && b.status !== "cancelled" && (
+            <Link className="btn btn-secondary btn-block" href={`/booking/${b.ref}?k=${b.access_token}`} target="_blank">Customer's booking page ↗</Link>
+            {can(user, "bookings.edit") && b.balance > 0 && b.status !== "cancelled" && (
               <form action={sendReminder}><input type="hidden" name="booking_id" value={b.id} /><button className="btn btn-secondary btn-block">Send balance reminder (SMS)</button></form>
             )}
-            <Link className="btn btn-secondary btn-block" href={`/booking/${b.ref}`} target="_blank">Customer's booking page ↗</Link>
-            {b.status === "pending" && (
+            {can(user, "bookings.edit") && b.status === "pending" && (
               <form action={setBookingStatus}><input type="hidden" name="booking_id" value={b.id} /><input type="hidden" name="status" value="confirmed" /><button className="btn btn-secondary btn-block">Confirm without payment</button></form>
             )}
-            {b.status !== "cancelled" ? (
-              <form action={setBookingStatus}><input type="hidden" name="booking_id" value={b.id} /><input type="hidden" name="status" value="cancelled" /><button className="btn btn-danger btn-block">Cancel booking & free seats</button></form>
+            {can(user, "bookings.edit") && (b.status !== "cancelled" ? (
+              <details>
+                <summary className="btn btn-danger btn-block">Cancel booking…</summary>
+                <form action={setBookingStatus} style={{ marginTop: 10 }}>
+                  <input type="hidden" name="booking_id" value={b.id} /><input type="hidden" name="status" value="cancelled" />
+                  <div className="field"><label>Reason</label><input name="reason" maxLength={200} placeholder="e.g. Customer changed plans" /></div>
+                  <button className="btn btn-danger btn-block">Yes, cancel and free the seats</button>
+                </form>
+              </details>
             ) : (
               <form action={setBookingStatus}><input type="hidden" name="booking_id" value={b.id} /><input type="hidden" name="status" value="pending" /><button className="btn btn-secondary btn-block">Restore booking</button></form>
-            )}
+            ))}
           </section>
         </aside>
       </div>

@@ -1,11 +1,15 @@
-import { isAdmin } from "@/lib/auth";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
+import { audit } from "@/lib/audit";
 import { db, getDeparture } from "@/lib/db";
 import { toCsv, csvResponse } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request, { params }) {
-  if (!(await isAdmin())) return new Response("Unauthorized", { status: 401 });
+  const user = await currentUser();
+  if (!can(user, "data.export") || user.must_change_password) return new Response("Not found", { status: 404 });
+  await audit(user, "export.manifest");
   const { id } = await params;
   const dep = getDeparture(Number(id));
   if (!dep) return new Response("Not found", { status: 404 });

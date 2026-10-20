@@ -322,3 +322,9 @@ tr.clickable:hover td { background: #faf9f6; }
   .inline-field input[type=range] { width: 120px; }
   .search-box input { font-size: .95rem; }
 }
+.hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.sidebar-user { display: flex; flex-direction: column; padding: 8px 12px; margin: 0 0 6px; border-radius: 8px; color: #fff !important; }
+.sidebar-user span { color: #a8b8b6; font-size: .8rem; }
+.sidebar-user:hover { background: rgba(255,255,255,.08); text-decoration: none; }
+.sidebar { overflow-y: auto; }
+.prose h2 { margin-top: 1.6em; font-size: 1.15rem; } .prose p { color: #3f3a35; }

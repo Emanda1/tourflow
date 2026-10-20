@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { company, appUrl, paystackEnabled, demoPaymentsAllowed } from "@/lib/config";
 import Toast from "@/components/Toast";
-import { saveSettings } from "../../account-actions";
+import { saveSettings, sendTestSms } from "../../account-actions";
 
 export default async function SettingsPage({ searchParams }) {
   await requireUser("settings.manage");
@@ -12,7 +12,7 @@ export default async function SettingsPage({ searchParams }) {
   return (
     <div className="stack" style={{ maxWidth: 860 }}>
       <h1 style={{ margin: 0 }}>Settings</h1>
-      <Toast message={sp.saved ? "Settings saved" : null} />
+      <Toast message={sp.saved ? "Settings saved" : sp.smsok ? "Test SMS sent. Check the phone." : null} />
       {sp.welcome && <div className="alert alert-ok">Your owner account is ready. Start by filling in your company details below, then add your staff under Staff accounts.</div>}
       {sp.error && <div className="alert alert-error" role="alert">{String(sp.error).slice(0, 200)}</div>}
 
@@ -46,8 +46,13 @@ export default async function SettingsPage({ searchParams }) {
           <dt>Website address</dt><dd>{appUrl}</dd>
           <dt>Online payments</dt><dd>{status(paystackEnabled, (process.env.PAYSTACK_SECRET_KEY || "").startsWith("sk_test_") ? "Paystack test mode" : "Paystack live", demoPaymentsAllowed ? "Demo mode (no real money)" : "Off: staff record payments")}</dd>
           <dt>SMS</dt><dd>{status(sms, "Arkesel connected", "Off: messages are only logged")}</dd>
+          <dt>SMS sender name</dt><dd>{process.env.SMS_SENDER_ID || "TourFlow"}</dd>
           <dt>Email receipts</dt><dd>{status(email, "Email connected", "Off")}</dd>
         </dl>
+        <form action={sendTestSms} className="row" style={{ marginTop: 16 }}>
+          <input name="phone" placeholder="Your phone, e.g. 024 123 4567" maxLength={30} required style={{ maxWidth: 260 }} />
+          <button className="btn btn-secondary">Send test SMS</button>
+        </form>
       </section>
     </div>
   );

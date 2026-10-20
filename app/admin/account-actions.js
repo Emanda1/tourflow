@@ -12,6 +12,9 @@ import { rateLimit, MINUTE } from "@/lib/ratelimit";
 import { clientIp } from "@/lib/request";
 import { saveImage, UploadError } from "@/lib/uploads";
 import { runBackup } from "@/lib/backup";
+import { sendSms } from "@/lib/notify";
+import { normalisePhone } from "@/lib/format";
+import { company } from "@/lib/config";
 
 const fail = (path, msg) => redirect(`${path}?error=${encodeURIComponent(msg)}`);
 // Used to make failed logins for unknown emails take as long as real ones.
@@ -225,6 +228,17 @@ export async function saveSettings(formData) {
   await audit(owner, "settings.update", Object.keys(values).join(", "));
   revalidatePath("/", "layout");
   redirect("/admin/settings?saved=1");
+}
+
+export async function sendTestSms(formData) {
+  const owner = await requireUser("settings.manage");
+  const to = normalisePhone(text(formData, "phone", { max: 30 }));
+  if (!isPhone(to)) fail("/admin/settings", "Enter a valid phone number for the test.");
+  if (!process.env.ARKESEL_API_KEY) fail("/admin/settings", "ARKESEL_API_KEY is not set yet, so no SMS can be sent. See the steps on this page.");
+  const { status, error } = await sendSms({ to, message: `Test message from ${company.name}. SMS is working.` });
+  await audit(owner, "sms.test", `${to}: ${status}${error ? ` (${error})` : ""}`);
+  if (status !== "sent") fail("/admin/settings", `Arkesel rejected the test SMS: ${error || "unknown error"}`);
+  redirect("/admin/settings?smsok=1");
 }
 
 /* ---------- Backups (owner only) ---------- */

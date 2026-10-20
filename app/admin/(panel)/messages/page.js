@@ -19,7 +19,7 @@ export default async function MessagesPage() {
             <tr key={m.id}>
               <td className="small">{date(m.created_at)}</td><td>{m.recipient}</td>
               <td>{m.ref ? <Link href={`/admin/bookings/${m.booking_id}`}>{m.ref}</Link> : "—"}</td>
-              <td className="small">{m.message}</td><td><span className={`badge badge-${m.status}`}>{m.status}</span></td>
+              <td className="small">{m.message}</td><td><span className={`badge badge-${m.status}`}>{m.status}</span>{m.error && <div className="small muted">{m.error}</div>}</td>
             </tr>
           ))}
           {rows.length === 0 && <tr><td colSpan={5} className="muted">No messages yet.</td></tr>}

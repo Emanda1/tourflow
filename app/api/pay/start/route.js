@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { startCheckout, bookingPath } from "@/lib/checkout";
+import { startCheckout, bookingPath, rememberPayingBooking } from "@/lib/checkout";
 import { getBookingForCustomer } from "@/lib/access";
 import { toPesewas } from "@/lib/format";
 import { rateLimit, MINUTE } from "@/lib/ratelimit";
@@ -16,6 +16,7 @@ export async function GET(request) {
   if (!rateLimit(`pay:${await clientIp()}`, 20, 10 * MINUTE)) return to(bookingPath(booking, "&error=busy"));
   const cedis = url.searchParams.get("cedis");
   try {
+    await rememberPayingBooking(booking);
     return to(await startCheckout(booking, cedis ? toPesewas(cedis) : null));
   } catch (e) {
     console.error("Payment start failed:", e.message);

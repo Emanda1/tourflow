@@ -37,11 +37,14 @@ Set these in the hosting dashboard. Never put real keys in GitHub.
 | `APP_URL` | **yes** | `https://bookings.theircompany.com`. The app will not start without an https address. |
 | `SETUP_CODE` | yes, for first setup | 12+ random characters. Needed to create the owner account. Remove after setup. |
 | `DATA_DIR` | yes on hosts | Folder on the persistent disk, e.g. `/var/data` |
-| `TRUST_PROXY` | yes on Render/Railway/Nginx | `true`, so rate limits see real visitor IPs |
+| `TRUST_PROXY` | **yes** | `true` behind Render, Railway, Nginx or Caddy, so rate limits see real visitor IPs. The app won't start in production without it (or `IP_HEADER`). |
+| `TRUST_PROXY_HOPS` | if more than one proxy | Number of proxies in front of the app (default `1`) |
+| `IP_HEADER` | if using Cloudflare | `cf-connecting-ip` |
 | `PAYSTACK_SECRET_KEY` | for online payment | `sk_live_…` (start with `sk_test_…` to rehearse) |
 | `ARKESEL_API_KEY`, `SMS_SENDER_ID` | optional | For real SMS |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | optional | For email receipts |
-| `BOOKING_HOLD_MINUTES` | optional | Default `120`. Unpaid online bookings release seats after this. |
+| `BOOKING_HOLD_MINUTES` | optional | Default `30`. Unpaid online bookings release seats after this (not while a payment is in progress). |
+| `PUBLIC_SMS_DAILY_CAP` | optional | Default `50`. Max automatic SMS per day from website forms. |
 
 **Never set** `ALLOW_DEMO_PAYMENTS=true` or `SEED_DEMO_DATA=true` on a live site.
 
@@ -122,6 +125,7 @@ Money goes straight from Paystack to the company's bank or MoMo settlement accou
 |---|---|
 | App won't start, log says `APP_URL must be set` | Set `APP_URL` to the https address |
 | Owner locked out | Wait 15 minutes, or run `npm run create-owner` on the server to reset |
+| Dashboard says "payments arrived after a booking was cancelled" | Open the cancelled booking: rebook the customer on another date or refund them, then record the refund |
 | A staff member left | Owner → Staff accounts → Deactivate (signs them out immediately) |
 | Customer paid but booking shows unpaid | Check Paystack dashboard; webhook URL must be set. Record the payment manually with the Paystack reference. |
 | Suspicious activity | Admin → Activity log shows every sign-in, payment, refund, export and change, with IP address |

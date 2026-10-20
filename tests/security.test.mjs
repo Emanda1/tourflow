@@ -6,13 +6,13 @@ import { can } from "../lib/permissions.js";
 import { toCsv } from "../lib/csv.js";
 import { rateLimit } from "../lib/ratelimit.js";
 
-test("passwords are salted and verified", () => {
-  const a = hashPassword("correct horse battery");
-  const b = hashPassword("correct horse battery");
+test("passwords are salted and verified", async () => {
+  const a = await hashPassword("correct horse battery");
+  const b = await hashPassword("correct horse battery");
   assert.notEqual(a, b, "same password must hash differently");
-  assert.ok(verifyPassword("correct horse battery", a));
-  assert.ok(!verifyPassword("wrong password here", a));
-  assert.ok(!verifyPassword("anything", "garbage"));
+  assert.ok(await verifyPassword("correct horse battery", a));
+  assert.ok(!(await verifyPassword("wrong password here", a)));
+  assert.ok(!(await verifyPassword("anything", "garbage")));
 });
 
 test("weak passwords are rejected", () => {
@@ -60,10 +60,20 @@ test("CSV export neutralises spreadsheet formulas", () => {
   const csv = toCsv([{ n: "=HYPERLINK(\"http://evil\")" }, { n: "-5" }, { n: "Ama" }], [["n", "Name"]]);
   assert.match(csv, /'=HYPERLINK/);
   assert.match(csv, /\r\n-5\r\n/);
+  const cr = toCsv([{ n: "x\r=cmd|' /C calc'!A0" }], [["n", "Name"]]);
+  assert.ok(!/\r=/.test(cr.split("\r\n")[1] ?? ""), "carriage return can't start a new formula row");
 });
 
 test("rate limiter blocks after the limit", () => {
   const key = "t:" + Math.random();
   for (let i = 0; i < 3; i++) assert.ok(rateLimit(key, 3, 60_000));
   assert.ok(!rateLimit(key, 3, 60_000));
+});
+
+test("only Ghana mobile numbers get automatic website SMS", async () => {
+  const { isGhanaMobile } = await import("../lib/notify.js").catch(() => ({}));
+  if (!isGhanaMobile) return; // notify.js needs the database; covered in bookings tests
+  assert.ok(isGhanaMobile("+233241234567"));
+  assert.ok(!isGhanaMobile("+447700900123"));
+  assert.ok(!isGhanaMobile("+233301234567"), "landlines excluded");
 });

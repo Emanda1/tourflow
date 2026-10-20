@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { completePayment, bookingPath } from "@/lib/checkout";
+import { completePayment, bookingPath, payingBookingToken } from "@/lib/checkout";
 import { appUrl } from "@/lib/config";
+import { getBookingForCustomer } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,10 @@ export async function GET(request) {
   try {
     const result = await completePayment(reference);
     if (!result) return to("/");
-    return to(bookingPath(result.booking, result.ok ? "&paid=1" : "&failed=1"));
+    const b = result.booking;
+    // Only show the booking if this browser started the payment; otherwise ask them to look it up.
+    if (!getBookingForCustomer(b.ref, await payingBookingToken(b.ref))) return to(`/find?${result.ok ? "paid=1" : "failed=1"}&ref=${b.ref}`);
+    return to(bookingPath(b, result.ok ? "&paid=1" : "&failed=1"));
   } catch (e) {
     console.error("Payment verification failed:", e.message);
     return to("/find?error=payment");

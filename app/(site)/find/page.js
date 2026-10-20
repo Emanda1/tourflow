@@ -16,16 +16,18 @@ async function find(formData) {
 }
 
 export default async function FindPage({ searchParams }) {
-  const { notfound, busy, error } = await searchParams;
+  const { notfound, busy, error, paid, failed, ref } = await searchParams;
   return (
     <main className="page container" style={{ maxWidth: 480 }}>
       <h1>Find my booking</h1>
       <p className="muted">Check your trip details, see your balance, or pay an instalment.</p>
+      {paid && <div className="alert alert-ok">Payment received. Enter your phone number to see your booking.</div>}
+      {failed && <div className="alert alert-error">The payment didn't go through. Find your booking to try again.</div>}
       {notfound && <div className="alert alert-error">We couldn't find a booking with those details.</div>}
       {busy && <div className="alert alert-error">Too many attempts. Please wait a while or call us.</div>}
       {error && <div className="alert alert-error">We couldn't confirm your payment automatically. If money left your account, call us with your booking reference.</div>}
       <form action={find} className="card card-pad">
-        <div className="field"><label htmlFor="ref">Booking reference</label><input id="ref" name="ref" placeholder="TF-XXXXXX" required maxLength={20} /></div>
+        <div className="field"><label htmlFor="ref">Booking reference</label><input id="ref" name="ref" placeholder="TF-XXXXXX" required maxLength={20} defaultValue={typeof ref === "string" ? ref.slice(0, 20) : ""} /></div>
         <div className="field"><label htmlFor="phone">Phone number used to book</label><input id="phone" name="phone" required maxLength={30} inputMode="tel" /></div>
         <button className="btn btn-block">Find booking</button>
       </form>

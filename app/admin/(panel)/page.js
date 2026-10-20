@@ -8,6 +8,7 @@ import RevenueChart from "@/components/RevenueChart";
 export default async function Dashboard() {
   const user = await requireUser("dashboard.view");
   const finance = can(user, "finance.view");
+  const lateCount = db.prepare("SELECT COUNT(*) AS n FROM bookings WHERE status = 'cancelled' AND cancel_reason LIKE 'PAID %'").get().n;
   const revenue = db.prepare(`SELECT
       COALESCE(SUM(${NET_AMOUNT}),0) AS total,
       COALESCE(SUM(CASE WHEN p.created_at >= date('now','start of month') THEN ${NET_AMOUNT} END),0) AS month
@@ -54,7 +55,10 @@ export default async function Dashboard() {
         <div className="card stat"><div className="label">Upcoming travellers</div><div className="value">{travellers}</div></div>
       </div>
 
-      {pending.length > 0 && (
+      {lateCount > 0 && can(user, "bookings.view") && (
+        <div className="alert alert-error"><strong>{lateCount}</strong> payment{lateCount > 1 ? "s" : ""} arrived after a booking was cancelled and need a refund or rebooking. <Link href="/admin/bookings?status=cancelled">Review</Link></div>
+      )}
+      {pending.length > 0 && can(user, "bookings.view") && (
         <div className="alert alert-info"><strong>{pending.length}</strong> booking{pending.length > 1 ? "s are" : " is"} waiting for payment. <Link href="/admin/bookings?status=pending">Review</Link></div>
       )}
 

@@ -29,6 +29,6 @@ const exists = db.prepare("SELECT name FROM sqlite_master WHERE name = 'users'")
 if (!exists) { console.error("Start the app once first so the database is created."); process.exit(1); }
 db.prepare(`INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?, 'owner')
   ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash, role = 'owner', active = 1, failed_logins = 0, locked_until = NULL`)
-  .run(name, email.toLowerCase(), hashPassword(pw));
+  .run(name, email.toLowerCase(), await hashPassword(pw));
 db.prepare("INSERT INTO audit_log (user_name, action, details, ip) VALUES ('command line', 'setup.owner', ?, 'server')").run(email);
 console.log(`Owner account ready for ${email}.`);

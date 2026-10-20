@@ -40,7 +40,6 @@ export default async function StaffPage({ searchParams }) {
                 </td>
                 <td>
                   {!u.active ? <span className="badge badge-closed">Deactivated</span>
-                    : u.locked_until && u.locked_until > now ? <span className="badge badge-cancelled">Locked</span>
                     : u.must_change_password ? <span className="badge badge-warn">Temp password</span>
                     : <span className="badge badge-ok">Active</span>}
                 </td>

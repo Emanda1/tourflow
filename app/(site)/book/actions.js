@@ -1,7 +1,7 @@
 "use server";
 import { redirect } from "next/navigation";
 import { createBooking, BookingError, MAX_TRAVELLERS } from "@/lib/bookings";
-import { startCheckout, bookingPath, CheckoutError } from "@/lib/checkout";
+import { startCheckout, bookingPath, CheckoutError, rememberPayingBooking } from "@/lib/checkout";
 import { rateLimit, HOUR } from "@/lib/ratelimit";
 import { clientIp } from "@/lib/request";
 import { onlinePaymentsAvailable } from "@/lib/config";
@@ -39,6 +39,7 @@ export async function submitBooking(prevState, formData) {
   let target = bookingPath(booking);
   if (onlinePaymentsAvailable) {
     try {
+      await rememberPayingBooking(booking);
       target = await startCheckout(booking);
     } catch (e) {
       console.error("Payment start failed:", e.message);

@@ -1,4 +1,5 @@
 "use server";
+import crypto from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db, setSettings } from "@/lib/db";
@@ -14,7 +15,7 @@ import { runBackup } from "@/lib/backup";
 
 const fail = (path, msg) => redirect(`${path}?error=${encodeURIComponent(msg)}`);
 // Used to make failed logins for unknown emails take as long as real ones.
-const DUMMY_HASH = hashPassword("not-a-real-password-placeholder");
+const DUMMY_HASH = "scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$" + Buffer.alloc(64).toString("base64");
 
 /* ---------- Sign in / out ---------- */
 
@@ -22,26 +23,51 @@ export async function login(prev, formData) {
   const ip = await clientIp();
   const email = text(formData, "email", { max: 160 }).toLowerCase();
   const password = String(formData.get("password") || "").slice(0, 200);
-  if (!rateLimit(`login-ip:${ip}`, 20, 15 * MINUTE)) return { error: "Too many sign-in attempts. Please wait 15 minutes.", values: formValues(formData) };
+  const generic = { error: "Email or password is incorrect, or the account is temporarily locked. Wait 15 minutes or ask the owner.", values: formValues(formData) };
+  if (!rateLimit(`login-ip:${ip}`, 20, 15 * MINUTE)) return generic;
 
+  // Always run the password check, so the reply time doesn't reveal whether an account exists.
   const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
-  const generic = { error: "Email or password is incorrect." };
-  if (!user) { verifyPassword(password, DUMMY_HASH); return { ...generic, values: formValues(formData) }; }
-  if (!user.active) return { ...generic, values: formValues(formData) };
-  if (user.locked_until && user.locked_until > new Date().toISOString()) {
-    return { error: `This account is locked after too many wrong passwords. Try again after ${LOCK_MINUTES} minutes, or ask the owner to reset it.` };
+  const valid = await verifyPassword(password, user?.password_hash || DUMMY_HASH);
+  // Lockout is per account AND per connection, so a stranger can't keep a real staff member locked out.
+  const lockKey = `login-lock:${email}|${ip}`;
+  const locked = isLocked(lockKey);
+  if (!user || !user.active || locked || !valid) {
+    if (user && !valid) {
+      const fails = noteFailure(lockKey);
+      db.prepare("UPDATE users SET failed_logins = failed_logins + 1 WHERE id = ?").run(user.id);
+      await audit({ id: user.id, name: user.name }, fails >= MAX_FAILED_LOGINS ? "login.locked" : "login.failed", email);
+    }
+    return generic;
   }
-  if (!verifyPassword(password, user.password_hash)) {
-    const fails = user.failed_logins + 1;
-    const lock = fails >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCK_MINUTES * MINUTE).toISOString() : null;
-    db.prepare("UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?").run(lock ? 0 : fails, lock, user.id);
-    await audit({ id: user.id, name: user.name }, lock ? "login.locked" : "login.failed", email);
-    return { ...generic, values: formValues(formData) };
-  }
+  clearFailures(lockKey);
   db.prepare("UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = datetime('now') WHERE id = ?").run(user.id);
   await createSession(user.id);
   await audit(user, "login.success", email);
   redirect(user.must_change_password ? "/admin/account?first=1" : "/admin");
+}
+
+// Failed sign-ins per (email, connection): MAX_FAILED_LOGINS wrong passwords locks that pair for LOCK_MINUTES.
+const failures = globalThis.__tfLoginFails ?? (globalThis.__tfLoginFails = new Map());
+function isLocked(key) {
+  const f = failures.get(key);
+  return Boolean(f && f.lockedUntil && f.lockedUntil > Date.now());
+}
+function noteFailure(key) {
+  const now = Date.now();
+  const f = failures.get(key);
+  const fresh = !f || now - f.first > LOCK_MINUTES * MINUTE;
+  const next = fresh ? { count: 1, first: now, lockedUntil: 0 } : { ...f, count: f.count + 1 };
+  if (next.count >= MAX_FAILED_LOGINS) next.lockedUntil = now + LOCK_MINUTES * MINUTE;
+  failures.set(key, next);
+  if (failures.size > 10000) for (const [k, v] of failures) if (now - v.first > LOCK_MINUTES * MINUTE) failures.delete(k);
+  return next.count;
+}
+function clearFailures(key) {
+  failures.delete(key);
+}
+function clearAllFailures(email) {
+  for (const k of failures.keys()) if (k.startsWith(`login-lock:${String(email).toLowerCase()}|`)) failures.delete(k);
 }
 
 export async function logout() {
@@ -59,7 +85,9 @@ export async function setupOwner(prev, formData) {
   if (process.env.NODE_ENV === "production") {
     if (!code) return { error: "Set SETUP_CODE in the server settings first, then restart.", values: formValues(formData) };
     if (!rateLimit(`setup:${await clientIp()}`, 10, 15 * MINUTE)) return { error: "Too many attempts. Wait 15 minutes.", values: formValues(formData) };
-    if (String(formData.get("code") || "") !== code) return { error: "Setup code is incorrect.", values: formValues(formData) };
+    const given = Buffer.from(String(formData.get("code") || ""));
+    const want = Buffer.from(code);
+    if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return { error: "Setup code is incorrect.", values: formValues(formData) };
   }
   const name = text(formData, "name", { max: 120 });
   const email = text(formData, "email", { max: 160 }).toLowerCase();
@@ -69,9 +97,10 @@ export async function setupOwner(prev, formData) {
   if (problem) return { error: problem, values: formValues(formData) };
   if (password !== formData.get("confirm")) return { error: "The two passwords don't match.", values: formValues(formData) };
 
+  const hash = await hashPassword(password);
   const created = db.transaction(() => {
     if (db.prepare("SELECT COUNT(*) AS n FROM users").get().n > 0) return null;
-    return db.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?, 'owner')").run(name, email, hashPassword(password)).lastInsertRowid;
+    return db.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?,?,?, 'owner')").run(name, email, hash).lastInsertRowid;
   }).immediate();
   if (!created) redirect("/admin/login");
   await createSession(created);
@@ -84,13 +113,13 @@ export async function setupOwner(prev, formData) {
 export async function changePassword(prev, formData) {
   const user = await requireUser();
   const row = db.prepare("SELECT * FROM users WHERE id = ?").get(user.id);
-  if (!verifyPassword(String(formData.get("current") || ""), row.password_hash)) return { error: "Your current password is incorrect." };
+  if (!await verifyPassword(String(formData.get("current") || ""), row.password_hash)) return { error: "Your current password is incorrect." };
   const pw = String(formData.get("password") || "");
   const problem = passwordProblem(pw, { name: row.name, email: row.email });
   if (problem) return { error: problem };
   if (pw !== formData.get("confirm")) return { error: "The two new passwords don't match." };
-  if (verifyPassword(pw, row.password_hash)) return { error: "Choose a password different from the current one." };
-  db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(hashPassword(pw), user.id);
+  if (await verifyPassword(pw, row.password_hash)) return { error: "Choose a password different from the current one." };
+  db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(await hashPassword(pw), user.id);
   destroyAllSessions(user.id); // sign out everywhere else
   await createSession(user.id);
   await audit(user, "password.change");
@@ -110,7 +139,7 @@ export async function createUser(prev, formData) {
   const problem = passwordProblem(password, { name, email });
   if (problem) return { error: `Temporary password: ${problem}` };
   try {
-    db.prepare("INSERT INTO users (name, email, password_hash, role, must_change_password) VALUES (?,?,?,?,1)").run(name, email, hashPassword(password), role);
+    db.prepare("INSERT INTO users (name, email, password_hash, role, must_change_password) VALUES (?,?,?,?,1)").run(name, email, await hashPassword(password), role);
   } catch (e) {
     if (String(e.message).includes("UNIQUE")) return { error: "Someone already uses that email.", values: formValues(formData) };
     throw e;
@@ -143,13 +172,15 @@ export async function updateUser(formData) {
     await audit(owner, "staff.deactivate", target.email);
   } else if (action === "activate") {
     db.prepare("UPDATE users SET active = 1, failed_logins = 0, locked_until = NULL WHERE id = ?").run(id);
+    clearAllFailures(target.email);
     await audit(owner, "staff.activate", target.email);
   } else if (action === "reset") {
     const pw = String(formData.get("password") || "");
     const problem = passwordProblem(pw, { name: target.name, email: target.email });
     if (problem) fail("/admin/staff", `New password: ${problem}`);
-    db.prepare("UPDATE users SET password_hash = ?, must_change_password = 1, failed_logins = 0, locked_until = NULL WHERE id = ?").run(hashPassword(pw), id);
+    db.prepare("UPDATE users SET password_hash = ?, must_change_password = 1, failed_logins = 0, locked_until = NULL WHERE id = ?").run(await hashPassword(pw), id);
     destroyAllSessions(id);
+    clearAllFailures(target.email);
     await audit(owner, "staff.reset_password", target.email);
   } else if (action === "signout") {
     destroyAllSessions(id);

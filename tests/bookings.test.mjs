@@ -73,3 +73,37 @@ test("bad input is rejected", () => {
   assert.throws(() => book(1, { name: "" }), BookingError);
   assert.throws(() => createBooking({ departureId: 99999, name: "A", email: "a@b.co", phone: "0241234567", travellers: [{ name: "A" }] }), BookingError);
 });
+
+test("one person can't hold many unpaid bookings", () => {
+  db.exec("DELETE FROM payments; DELETE FROM travellers; DELETE FROM bookings;");
+  book(1); book(1);
+  assert.throws(() => book(1), /waiting for payment/);
+});
+
+test("a website booking can't change another customer's details", async () => {
+  db.exec("DELETE FROM payments; DELETE FROM travellers; DELETE FROM bookings;");
+  const victim = book(1, { name: "Real Owner", email: "owner@example.com", source: "walk-in" });
+  const attacker = book(1, { name: "Attacker", email: "attacker@evil.test" });
+  assert.equal(getBooking(victim.id).customer_name, "Real Owner");
+  assert.equal(getBooking(victim.id).customer_email, "owner@example.com");
+  assert.equal(attacker.customer_name, "Attacker", "attacker's page shows their own typed name, not the victim's");
+  const c = db.prepare("SELECT name, email FROM customers WHERE phone = '+233241234567'").get();
+  assert.equal(c.name, "Real Owner");
+  assert.equal(c.email, "owner@example.com");
+});
+
+test("a payment arriving after auto-cancellation restores the booking if seats are free", async () => {
+  db.exec("DELETE FROM payments; DELETE FROM travellers; DELETE FROM bookings;");
+  const b = book(1);
+  db.prepare("UPDATE bookings SET status = 'cancelled', cancel_reason = 'Not paid in time (auto)' WHERE id = ?").run(b.id);
+  const after = await recordPayment({ bookingId: b.id, amount: 30000, method: "momo", reference: "LATE-1" });
+  assert.equal(after.status, "confirmed");
+});
+
+test("a recent pending payment stops the booking from expiring", () => {
+  db.exec("DELETE FROM payments; DELETE FROM travellers; DELETE FROM bookings;");
+  const b = book(1);
+  db.prepare("UPDATE bookings SET created_at = datetime('now', '-3 hours') WHERE id = ?").run(b.id);
+  db.prepare("INSERT INTO payments (booking_id, amount, method, reference, status) VALUES (?, 30000, 'paystack', 'PEND-1', 'pending')").run(b.id);
+  assert.equal(expireUnpaidBookings(30), 0);
+});

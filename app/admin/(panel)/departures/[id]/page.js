@@ -41,8 +41,10 @@ export default async function DepartureDetail({ params, searchParams }) {
 
       <div className="grid grid-4">
         <div className="card stat"><div className="label">Seats booked</div><div className="value">{d.booked}/{d.capacity}</div></div>
+        {can(user, "finance.view") && <>
         <div className="card stat"><div className="label">Collected</div><div className="value">{money(collected)}</div></div>
         <div className="card stat"><div className="label">Still owed</div><div className="value">{money(owed)}</div></div>
+        </>}
       </div>
 
       <section className="card">
@@ -56,7 +58,7 @@ export default async function DepartureDetail({ params, searchParams }) {
             <PrintButton />
           </div>
         </div>
-        <ManifestTable canCheckIn={can(user, "trips.checkin")} travellers={travellers.map((t) => ({ ...t, checked_in: !!t.checked_in, balance: bookings.find((b) => b.id === t.booking_id)?.balance ?? 0 }))} />
+        <ManifestTable canCheckIn={can(user, "trips.checkin")} showMoney={can(user, "finance.view")} canOpenBookings={can(user, "bookings.view")} travellers={travellers.map((t) => ({ ...t, checked_in: !!t.checked_in, balance: can(user, "finance.view") ? bookings.find((b) => b.id === t.booking_id)?.balance ?? 0 : null }))} />
       </section>
 
       <div className="two-col no-print">

@@ -1,7 +1,7 @@
 "use server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/format";
-import { sendSms } from "@/lib/notify";
+import { sendSms, canSendPublicSms } from "@/lib/notify";
 import { company } from "@/lib/config";
 import { text, int, isEmail, isPhone, isDate, formValues } from "@/lib/validate";
 import { rateLimit, HOUR } from "@/lib/ratelimit";
@@ -25,9 +25,9 @@ export async function submitEnquiry(prev, formData) {
     isDate(travelDate) ? travelDate : null, int(formData, "group_size", { min: 1, max: 500 }),
     text(formData, "budget", { max: 60 }), text(formData, "message", { max: 2000 }));
 
-  // Only one auto-SMS per number per day, so the form can't be used to spam people.
-  if (rateLimit(`enq-sms:${clean}`, 1, 24 * HOUR)) {
-    await sendSms({ to: clean, message: `Thanks ${name.split(" ")[0]}! We've received your trip request and will call you within 24 hours. - ${company.name}` });
+  // Fixed wording only (no visitor-typed text), and strict limits: see canSendPublicSms.
+  if (canSendPublicSms(clean)) {
+    await sendSms({ to: clean, message: `Thank you for your trip request. Our team will call you within 24 hours. - ${company.name}` });
   }
   return { ok: true, name: name.split(" ")[0] };
 }

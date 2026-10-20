@@ -100,7 +100,7 @@ data/              database, uploads and backups (created on first run, never co
 All money is stored in **pesewas** (GH₵ 1 = 100) to avoid rounding errors.
 
 ## Business rules
-- A booking holds its seats as soon as it's made (status **pending**). Unpaid online bookings release their seats after 2 hours.
+- A booking holds its seats as soon as it's made (status **pending**). Unpaid online bookings release their seats after 30 minutes (unless a payment is in progress).
 - It becomes **confirmed** automatically once the customer has paid at least the deposit.
 - Cancelling a booking frees its seats.
 - Customers are matched by phone number, so repeat customers build up a history.

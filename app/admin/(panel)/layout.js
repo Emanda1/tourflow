@@ -6,6 +6,7 @@ import { company, paystackEnabled, demoPaymentsAllowed } from "@/lib/config";
 import AdminNav from "@/components/AdminNav";
 import LiveUpdates from "@/components/LiveUpdates";
 import { logout } from "../account-actions";
+import LogoMark from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Admin", robots: { index: false } };
@@ -35,7 +36,7 @@ export default async function AdminLayout({ children }) {
   return (
     <div className="admin-shell">
       <aside className="sidebar">
-        <Link href="/admin" className="logo"><span className="logo-mark" />{company.name}</Link>
+        <Link href="/admin" className="logo"><LogoMark />{company.name}</Link>
         <AdminNav links={links} />
         <div className="bottom small">
           <Link href="/admin/account" className="sidebar-user">

@@ -50,6 +50,8 @@ p { margin: 0 0 1em; }
 .site-header .container { display: flex; align-items: center; justify-content: space-between; height: 64px; }
 .logo { font-weight: 800; font-size: 1.2rem; color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .logo:hover { text-decoration: none; }
+.logo-img { height: 32px; width: auto; max-width: 140px; object-fit: contain; border-radius: 6px; flex-shrink: 0; }
+.sidebar .logo-img { background: #fff; padding: 2px; }
 .logo-mark { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--brand), var(--accent)); display: inline-block; }
 .nav { display: flex; gap: 20px; align-items: center; font-weight: 500; }
 .nav a { color: var(--ink); }

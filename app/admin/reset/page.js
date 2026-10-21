@@ -2,6 +2,7 @@ import Link from "next/link";
 import { company } from "@/lib/config";
 import { findResetUser } from "@/lib/passwordReset";
 import ResetForm from "./ResetForm";
+import LogoMark from "@/components/Logo";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Choose a new password", robots: { index: false }, referrer: "no-referrer" };
@@ -11,7 +12,7 @@ export default async function ResetPage({ searchParams }) {
   const user = findResetUser(typeof t === "string" ? t : "");
   return (
     <main className="container" style={{ maxWidth: 420, paddingTop: 100 }}>
-      <div className="logo" style={{ marginBottom: 20 }}><span className="logo-mark" />{company.name} staff</div>
+      <div className="logo" style={{ marginBottom: 20 }}><LogoMark />{company.name} staff</div>
       {user ? (
         <>
           <h1 style={{ fontSize: "1.5rem" }}>Choose a new password</h1>

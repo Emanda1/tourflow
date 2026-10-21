@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { company } from "@/lib/config";
 import WhatsAppButton from "@/components/WhatsAppButton";
+import LogoMark from "@/components/Logo";
 
 export default function SiteLayout({ children }) {
   return (
     <>
       <header className="site-header">
         <div className="container">
-          <Link href="/" className="logo">{company.logo ? <img src={company.logo} alt="" style={{ height: 32, width: "auto" }} /> : <span className="logo-mark" />}{company.name}</Link>
+          <Link href="/" className="logo"><LogoMark />{company.name}</Link>
           <nav className="nav">
             <Link href="/#tours">Tours</Link>
             <Link href="/custom-trip">Custom trip</Link>

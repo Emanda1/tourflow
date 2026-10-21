@@ -25,7 +25,8 @@ export async function saveTour(prev, formData) {
   const price = toPesewas(formData.get("price"));
   if (!title) return bad("Please give the tour a name.");
   if (!text(formData, "destination", { max: 120 })) return bad("Please enter the destination.");
-  if (price <= 0 || price > 100_000_000) return bad("Please enter a valid price.");
+  if (price <= 0) return bad(`"${String(formData.get("price") || "").trim() || "(empty)"}" isn't a price we can read. Type the price per person in cedis, for example 1500 or 1,500.50.`);
+  if (price > 100_000_000) return bad("That price is too high. The maximum is GH₵ 1,000,000 per person.");
   const typedImage = text(formData, "image_url", { max: 500 });
   if (typedImage && !safeImageUrl(typedImage)) return bad("Image links must start with https:// and can't contain spaces, brackets or quotes. Or upload a photo instead.");
 
@@ -105,12 +106,15 @@ export async function saveDeparture(prev, formData) {
   if (old && capacity < old.booked) return bad(`There are already ${old.booked} travellers booked. Seats can't be fewer than that.`);
   const staffId = (k) => { const v = int(formData, k, { min: 1 }); return v && db.prepare("SELECT 1 FROM staff WHERE id = ?").get(v) ? v : null; };
   const vehicleId = int(formData, "vehicle_id", { min: 1 });
+  const rawOverride = String(formData.get("price_override") || "").trim();
+  const priceOverride = rawOverride ? toPesewas(rawOverride) : null;
+  if (rawOverride && (priceOverride <= 0 || priceOverride > 100_000_000)) return bad(`"${rawOverride}" isn't a special price we can read. Type it in cedis (for example 1200 or 1,200.50), or leave it empty to use the tour's normal price.`);
   const data = {
     tour_id: tour.id,
     start_date: start,
     end_date: end,
     capacity,
-    price_override: formData.get("price_override") ? toPesewas(formData.get("price_override")) || null : null,
+    price_override: priceOverride,
     status: ["open", "closed", "completed", "cancelled"].includes(status) ? status : "open",
     guide_id: staffId("guide_id"),
     driver_id: staffId("driver_id"),

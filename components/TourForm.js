@@ -22,7 +22,7 @@ export default function TourForm({ tour = {} }) {
           <select id="tf-cat" name="category" defaultValue={val("category", tour.category || "Local")}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
         </div>
         <div className="field"><label htmlFor="tf-days">Days</label><input id="tf-days" type="number" name="duration_days" min="1" max="60" defaultValue={val("duration_days", tour.duration_days || 1)} /></div>
-        <div className="field"><label htmlFor="tf-price">Price per person (GH₵)</label><input id="tf-price" type="number" step="0.01" min="0.01" name="price" defaultValue={val("price", tour.price ? tour.price / 100 : "")} required /></div>
+        <div className="field"><label htmlFor="tf-price">Price per person (GH₵)</label><input id="tf-price" type="text" inputMode="decimal" autoComplete="off" placeholder="e.g. 1500 or 1,500.50" name="price" defaultValue={val("price", tour.price ? tour.price / 100 : "")} required /></div>
         <div className="field"><label htmlFor="tf-dep">Deposit % <span className="muted small">(0 = pay in full)</span></label><input id="tf-dep" type="number" name="deposit_percent" min="0" max="100" defaultValue={val("deposit_percent", tour.deposit_percent ?? 30)} /></div>
       </div>
       <CoverPicker current={v ? v.image_url : tour.image_url} />

@@ -21,7 +21,7 @@ export default function DepartureForm({ tourId, departure = {}, staff, vehicles,
         <div className="field"><label htmlFor={p + "start"}>Start date</label><input id={p + "start"} type="date" name="start_date" defaultValue={d.start_date} required /></div>
         <div className="field"><label htmlFor={p + "end"}>End date <span className="muted small">(moves with the start date)</span></label><input id={p + "end"} type="date" name="end_date" defaultValue={d.end_date || ""} /></div>
         <div className="field"><label htmlFor={p + "cap"}>Seats</label><input id={p + "cap"} type="number" name="capacity" min="1" max="1000" defaultValue={d.capacity || 20} /></div>
-        <div className="field"><label htmlFor={p + "price"}>Special price (GH₵, optional)</label><input id={p + "price"} type="text" inputMode="decimal" autoComplete="off" name="price_override" defaultValue={money(d.price_override)} /></div>
+        <div className="field"><label htmlFor={p + "price"}>Special price for this date (GH₵, optional)</label><input id={p + "price"} type="text" inputMode="decimal" autoComplete="off" name="price_override" defaultValue={money(d.price_override)} /><span className="small muted">Changes the main price only. Other traveller prices and extras stay the same.</span></div>
         <div className="field"><label htmlFor={p + "status"}>Status</label>
           <select id={p + "status"} name="status" defaultValue={d.status || "open"}>
             <option value="open">Open for booking</option><option value="closed">Closed (no new bookings)</option><option value="completed">Completed</option><option value="cancelled">Cancelled (cancels its bookings)</option>

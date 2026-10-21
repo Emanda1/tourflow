@@ -7,6 +7,7 @@ import { dateRange, money } from "@/lib/format";
 import Toast from "@/components/Toast";
 import TourForm from "@/components/TourForm";
 import DepartureForm from "@/components/DepartureForm";
+import { tourOptions } from "@/lib/pricing";
 
 export default async function EditTour({ params, searchParams }) {
   const user = await requireUser("tours.edit");
@@ -29,7 +30,7 @@ export default async function EditTour({ params, searchParams }) {
         <Link href={`/tours/${tour.slug}`} target="_blank" className="btn btn-secondary btn-sm">View on website ↗</Link>
       </div>
       <div className="two-col">
-        <TourForm tour={tour} />
+        <TourForm tour={tour} options={tourOptions(tour.id)} photos={db.prepare("SELECT id, url FROM tour_photos WHERE tour_id = ? ORDER BY sort, id").all(tour.id)} />
         <div className="stack">
           <section className="card">
             <div className="card-pad"><h2 style={{ margin: 0 }}>Dates</h2></div>

@@ -5,7 +5,7 @@ import Link from "next/link";
 const fmt = (p) => "GH₵ " + (p / 100).toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const day = (iso) => new Date(iso + "T00:00:00");
 
-export default function BookingWidget({ departures, depositPercent }) {
+export default function BookingWidget({ departures, depositPercent, hasOptions = false }) {
   const firstOpen = departures.find((d) => d.capacity - d.booked > 0);
   const [selId, setSelId] = useState(firstOpen?.id);
   const [pax, setPax] = useState(1);
@@ -66,6 +66,7 @@ export default function BookingWidget({ departures, depositPercent }) {
           <div className="price-box">
             <div className="spread"><span>{fmt(sel.price)} × {n}</span><strong className="price">{fmt(total)}</strong></div>
             {hasDeposit && <div className="spread small muted"><span>Or reserve with a {depositPercent}% deposit</span><span>{fmt(deposit)}</span></div>}
+            {hasOptions && <div className="small muted" style={{ marginTop: 6 }}>Other traveller prices and extras are chosen on the next step.</div>}
           </div>
           <Link className="btn btn-block btn-lg" href={`/book/${sel.id}?n=${n}`}>Book {n} seat{n > 1 ? "s" : ""}</Link>
         </>

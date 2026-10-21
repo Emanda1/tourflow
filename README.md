@@ -6,7 +6,8 @@ A complete booking and management system for travel and tour companies, built wi
 
 **Customer website**
 - Live search, category filters, budget slider and sorting on the home page
-- Tour pages with a day-by-day itinerary you can expand, a date picker showing seats left, and a live price calculator
+- Tour pages with a photo gallery (tap to enlarge), a day-by-day itinerary you can expand, a date picker showing seats left, and a live price calculator
+- Different prices per traveller (adult, child, infant, student…) and optional extras (single room, airport pickup…) with a live total
 - Step-by-step booking (Travellers → Contact → Payment) with a review before paying
 - "Request a custom trip" form for groups, schools and companies
 - WhatsApp chat button on every page
@@ -19,12 +20,12 @@ A complete booking and management system for travel and tour companies, built wi
 - Bookings table with instant search, status tabs and sortable columns
 - CSV export of bookings and trip manifests (opens in Excel)
 - Trip requests inbox with one-tap WhatsApp/call and status tracking
-- Upload tour cover photos
+- Upload tour cover photos and a gallery of up to 12 photos per tour (large phone photos are shrunk automatically)
 - Staff accounts with roles, activity log, automatic daily backups, company settings (logo, colours, policies)
 - Printable receipts and optional email receipts
 - Bookings: search, filter, record cash/MoMo/bank payments, refunds, confirm or cancel with a reason, send balance reminders
 - Manual bookings for walk-in, phone and WhatsApp customers
-- Tours: create and edit tours, prices, deposit %, itinerary, and add departure dates
+- Tours: create and edit tours, prices, other traveller types and extras, deposit %, itinerary, and add departure dates
 - Trips & manifests: searchable passenger list, one-tap check-in with live progress, assign guide/driver/vehicle, print manifest, SMS all travellers
 - Customers with trip history and total spent
 - Guides, drivers and vehicles
@@ -103,6 +104,7 @@ All money is stored in **pesewas** (GH₵ 1 = 100) to avoid rounding errors.
 - A booking holds its seats as soon as it's made (status **pending**). Unpaid online bookings release their seats after 30 minutes (unless a payment is in progress).
 - It becomes **confirmed** automatically once the customer has paid at least the deposit.
 - Cancelling a booking frees its seats.
+- Each traveller is charged the price for their type (adult, child…), and extras are added on top. Every traveller takes a seat, including free infants. A booking keeps the names and prices it was made with, so later price changes never change it. A special price for a date changes the main price only.
 - Customers are matched by phone number, so repeat customers build up a history.
 
 ## Ideas for later

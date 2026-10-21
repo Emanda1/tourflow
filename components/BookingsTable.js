@@ -10,7 +10,7 @@ const TABS = [
   ["all", "All"], ["pending", "Awaiting payment"], ["owing", "Balance due"], ["paid", "Fully paid"], ["upcoming", "Upcoming trips"], ["cancelled", "Cancelled"],
 ];
 const COLS = [
-  ["ref", "Ref"], ["customer_name", "Customer"], ["start_date", "Trip"], ["travellers", "Pax"],
+  ["ref", "Ref"], ["customer_name", "Customer"], ["start_date", "Trip"], ["travellers", "Travellers"],
   ["status", "Status"], ["total", "Total"], ["balance", "Balance"], ["created_at", "Booked"],
 ];
 

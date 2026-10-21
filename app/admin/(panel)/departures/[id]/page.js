@@ -21,6 +21,10 @@ export default async function DepartureDetail({ params, searchParams }) {
   const travellers = db.prepare(`SELECT tr.*, b.ref, b.id AS booking_id, b.status, c.phone AS contact_phone, COALESCE(b.contact_name, c.name) AS contact_name
     FROM travellers tr JOIN bookings b ON b.id = tr.booking_id JOIN customers c ON c.id = b.customer_id
     WHERE b.departure_id = ? AND b.status != 'cancelled' ORDER BY tr.name`).all(d.id);
+  const extrasBooked = db.prepare(`SELECT x.label, x.quantity, b.ref, b.id AS booking_id, COALESCE(b.contact_name, c.name) AS contact_name
+    FROM booking_extras x JOIN bookings b ON b.id = x.booking_id JOIN customers c ON c.id = b.customer_id
+    WHERE b.departure_id = ? AND b.status != 'cancelled' ORDER BY x.label, b.ref`).all(d.id);
+  const extraTotals = Object.entries(extrasBooked.reduce((m, x) => ({ ...m, [x.label]: (m[x.label] || 0) + x.quantity }), {}));
   const staff = db.prepare("SELECT * FROM staff ORDER BY name").all();
   const vehicles = db.prepare("SELECT * FROM vehicles ORDER BY name").all();
   const collected = bookings.reduce((s, b) => s + b.paid, 0);
@@ -58,7 +62,19 @@ export default async function DepartureDetail({ params, searchParams }) {
             <PrintButton />
           </div>
         </div>
-        <ManifestTable canCheckIn={can(user, "trips.checkin")} showMoney={can(user, "finance.view")} canOpenBookings={can(user, "bookings.view")} travellers={travellers.map((t) => ({ ...t, checked_in: !!t.checked_in, balance: can(user, "finance.view") ? bookings.find((b) => b.id === t.booking_id)?.balance ?? 0 : null }))} />
+        <ManifestTable canCheckIn={can(user, "trips.checkin")} showMoney={can(user, "finance.view")} canOpenBookings={can(user, "bookings.view")} travellers={travellers.map(({ price, ...t }) => ({ ...t, checked_in: !!t.checked_in, balance: can(user, "finance.view") ? bookings.find((b) => b.id === t.booking_id)?.balance ?? 0 : null }))} />
+        {extrasBooked.length > 0 && (
+          <div className="card-pad">
+            <h3 style={{ marginTop: 0 }}>Extras booked</h3>
+            <p className="small" style={{ marginTop: 0 }}>{extraTotals.map(([label, n]) => <span key={label} className="chip" style={{ marginRight: 6 }}>{label} × {n}</span>)}</p>
+            <div className="table-wrap"><table>
+              <thead><tr><th>Extra</th><th>How many</th><th>Booking</th><th>Lead contact</th></tr></thead>
+              <tbody>{extrasBooked.map((x, i) => (
+                <tr key={i}><td>{x.label}</td><td>{x.quantity}</td><td>{can(user, "bookings.view") ? <Link href={`/admin/bookings/${x.booking_id}`}>{x.ref}</Link> : x.ref}</td><td>{x.contact_name}</td></tr>
+              ))}</tbody>
+            </table></div>
+          </div>
+        )}
       </section>
 
       <div className="two-col no-print">

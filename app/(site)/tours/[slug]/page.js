@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db, listDepartures } from "@/lib/db";
@@ -5,6 +6,8 @@ import { money, lines, coverStyle, date } from "@/lib/format";
 import BookingWidget from "@/components/BookingWidget";
 import Accordion from "@/components/Accordion";
 import ShareButton from "@/components/ShareButton";
+import Gallery from "@/components/Gallery";
+import { tourOptions, mainLabel } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +35,9 @@ export default async function TourPage({ params }) {
   const recent = db.prepare(`SELECT COALESCE(SUM(b.travellers), 0) AS n FROM bookings b JOIN departures d ON d.id = b.departure_id
     WHERE d.tour_id = ? AND b.status != 'cancelled' AND b.created_at > datetime('now', '-30 days')`).get(tour.id).n;
   const nextDep = departures.find((d) => d.capacity - d.booked > 0);
+  const options = tourOptions(tour.id);
+  const baseLabel = mainLabel(tour, options);
+  const photos = db.prepare("SELECT id, url FROM tour_photos WHERE tour_id = ? ORDER BY sort, id").all(tour.id);
   const related = db.prepare("SELECT slug, title, price FROM tours WHERE active = 1 AND id != ? AND category = ? LIMIT 3").all(tour.id, tour.category);
 
   return (
@@ -51,6 +57,8 @@ export default async function TourPage({ params }) {
             <ShareButton title={tour.title} />
           </div>
 
+          {photos.length > 0 && <Gallery photos={photos} title={tour.title} />}
+
           <section className="card card-pad">
             <h2>Day-by-day itinerary</h2>
             <Accordion items={days} />
@@ -66,6 +74,24 @@ export default async function TourPage({ params }) {
               <ul className="check-list cross-list">{lines(tour.exclusions).map((l, i) => <li key={i}>{l}</li>)}</ul>
             </section>
           </div>
+
+          {(options.types.length > 0 || options.extras.length > 0) && (
+            <section className="card card-pad">
+              <h3>Prices</h3>
+              <dl className="kv">
+                <dt>{baseLabel}</dt><dd>{money(tour.price)} per person{departures.some((d) => d.price !== tour.price) ? " (some dates have a special price)" : ""}</dd>
+                {options.types.map((t) => <Fragment key={t.id}><dt>{t.label}</dt><dd>{t.price ? `${money(t.price)} per person` : "Free"}</dd></Fragment>)}
+              </dl>
+              {options.extras.length > 0 && (
+                <>
+                  <h4 style={{ marginTop: 16 }}>Optional extras</h4>
+                  <dl className="kv">
+                    {options.extras.map((x) => <Fragment key={x.id}><dt>{x.label}</dt><dd>{money(x.price)} {x.per === "booking" ? "per booking" : "per person"}</dd></Fragment>)}
+                  </dl>
+                </>
+              )}
+            </section>
+          )}
 
           <section className="card card-pad">
             <h3>Good to know</h3>
@@ -91,9 +117,9 @@ export default async function TourPage({ params }) {
             const open = departures.filter((d) => d.capacity - d.booked > 0).map((d) => d.price);
             const low = open.length ? Math.min(...open) : tour.price;
             const varies = open.some((p) => p !== low);
-            return <div className="price" style={{ fontSize: "1.6rem" }}>{varies ? <span className="muted small">from </span> : null}{money(low)} <span className="muted small">/ person</span></div>;
+            return <div className="price" style={{ fontSize: "1.6rem" }}>{varies ? <span className="muted small">from </span> : null}{money(low)} <span className="muted small">/ {options.types.length ? baseLabel.toLowerCase() : "person"}</span></div>;
           })()}
-          <BookingWidget departures={departures} depositPercent={tour.deposit_percent} />
+          <BookingWidget departures={departures} depositPercent={tour.deposit_percent} hasOptions={options.types.length > 0 || options.extras.length > 0} />
         </aside>
       </div>
       {nextDep && (

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { db, getBooking } from "@/lib/db";
 import { money, date, dateRange, statusLabel, paymentLabel } from "@/lib/format";
 import Toast from "@/components/Toast";
+import { bookingLines } from "@/lib/pricing";
 import { addPayment, addRefund, setBookingStatus, sendReminder } from "../../../actions";
 
 export default async function BookingDetail({ params, searchParams }) {
@@ -13,7 +14,9 @@ export default async function BookingDetail({ params, searchParams }) {
   const sp = await searchParams;
   const b = getBooking(Number(id));
   if (!b) notFound();
-  const travellers = db.prepare("SELECT * FROM travellers WHERE booking_id = ?").all(b.id);
+  const travellers = db.prepare("SELECT * FROM travellers WHERE booking_id = ? ORDER BY id").all(b.id);
+  const priceLines = bookingLines(b);
+  const mixedTypes = new Set(travellers.map((t) => t.price_type || "")).size > 1;
   const payments = db.prepare("SELECT * FROM payments WHERE booking_id = ? ORDER BY created_at DESC").all(b.id);
   const messages = db.prepare("SELECT * FROM notifications WHERE booking_id = ? ORDER BY id DESC").all(b.id);
 
@@ -49,7 +52,7 @@ export default async function BookingDetail({ params, searchParams }) {
           </section>
           <section className="card card-pad">
             <h3>Travellers ({travellers.length})</h3>
-            <ol style={{ margin: 0, paddingLeft: 20 }}>{travellers.map((t) => <li key={t.id}>{t.name}{t.phone ? ` · ${t.phone}` : ""}</li>)}</ol>
+            <ol style={{ margin: 0, paddingLeft: 20 }}>{travellers.map((t) => <li key={t.id}>{t.name}{mixedTypes ? <span className="badge" style={{ marginLeft: 6 }}>{t.price_type}</span> : null}{t.phone ? ` · ${t.phone}` : ""}</li>)}</ol>
           </section>
           <section className="card">
             <div className="card-pad"><h3 style={{ margin: 0 }}>Payments</h3></div>
@@ -75,6 +78,9 @@ export default async function BookingDetail({ params, searchParams }) {
 
         <aside className="stack">
           <section className="card card-pad">
+            <div className="price-box" style={{ marginTop: 0 }}>
+              {priceLines.map((l, i) => <div key={i} className="spread small"><span>{l.qty} × {l.label} @ {money(l.unit)}</span><span>{money(l.total)}</span></div>)}
+            </div>
             <dl className="kv">
               <dt>Total</dt><dd className="num">{money(b.total)}</dd>
               <dt>Paid</dt><dd className="num">{money(b.paid)}</dd>

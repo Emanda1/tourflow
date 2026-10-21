@@ -9,6 +9,7 @@ export default function ManifestTable({ travellers, canCheckIn = false, showMone
   // Pick up new travellers and other staff's check-ins when the page refreshes.
   useEffect(() => { setRows(travellers); }, [travellers]);
   const [q, setQ] = useState("");
+  const mixed = new Set(rows.map((r) => r.price_type || "")).size > 1; // show "Child" etc. only when the trip has different traveller types
   const [onlyWaiting, setOnlyWaiting] = useState(false);
   const [, startTransition] = useTransition();
   const done = rows.filter((r) => r.checked_in).length;
@@ -43,7 +44,7 @@ export default function ManifestTable({ travellers, canCheckIn = false, showMone
           {shown.map((t, i) => (
             <tr key={t.id} className={t.checked_in ? "checked-row" : ""}>
               <td>{i + 1}</td>
-              <td><strong>{t.name}</strong></td>
+              <td><strong>{t.name}</strong>{mixed && t.price_type ? <div className="small muted">{t.price_type}</div> : null}</td>
               <td>{t.phone ? <a href={`tel:${t.phone}`}>{t.phone}</a> : "—"}</td>
               <td>{canOpenBookings ? <a href={`/admin/bookings/${t.booking_id}`}>{t.ref}</a> : t.ref} {t.status === "pending" && <span className="badge badge-pending">pending</span>}</td>
               <td>{t.contact_name}<div className="small muted">{t.contact_phone}</div></td>

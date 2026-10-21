@@ -108,3 +108,9 @@ test("number settings with typos fall back to safe defaults", async () => {
   assert.equal(envInt("TEST_NUM", 14, { min: 1 }), 1);
   delete process.env.TEST_NUM;
 });
+
+test("private network addresses are recognised (so the Settings check can warn)", async () => {
+  const { isPrivateIp } = await import("../lib/validate.js");
+  for (const ip of ["direct", "10.197.182.121", "127.0.0.1", "192.168.1.5", "172.16.0.1", "172.31.255.1", "::1", "fd12:3456::1"]) assert.equal(isPrivateIp(ip), true, ip);
+  for (const ip of ["41.66.12.3", "102.176.1.1", "172.32.0.1", "8.8.8.8", "2c0f:fe38::1"]) assert.equal(isPrivateIp(ip), false, ip);
+});

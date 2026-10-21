@@ -80,6 +80,16 @@ Put Caddy or Nginx in front for HTTPS (Caddy: `bookings.theircompany.com { rever
 
 (Alternative to the setup page: on the server run `npm run create-owner -- "Full Name" owner@company.com`.)
 
+### Check visitor addresses
+Open **Settings → Connections → Visitor addresses** while signed in as the owner.
+- **Working**: nothing to do.
+- **Needs setting up**: the system is seeing your host's internal address instead of yours. Open
+  "Why this matters and how to fix it" and look at `X-Forwarded-For`. Find **your own** address in
+  that list (search "what is my IP" on your phone/laptop), count how many addresses come **after** it,
+  add 1, and set `TRUST_PROXY_HOPS` to that number. Example: `41.66.1.2, 10.0.4.7` → `TRUST_PROXY_HOPS=2`.
+  If `CF-Connecting-IP` shows your address and the site is behind Cloudflare, use `IP_HEADER=cf-connecting-ip` instead.
+- Save the setting, let the host restart the app, and check again.
+
 ## 6. Connect Paystack
 
 1. Paystack dashboard → Settings → API Keys & Webhooks.

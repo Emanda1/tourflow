@@ -3,6 +3,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { getBookingForCustomer } from "@/lib/access";
 import { amountDueNow, minimumPayment } from "@/lib/bookings";
+import { bookingLines } from "@/lib/pricing";
 import { money, date, dateRange, statusLabel, paymentLabel } from "@/lib/format";
 import Toast from "@/components/Toast";
 import { company, onlinePaymentsAvailable, appUrl } from "@/lib/config";
@@ -18,6 +19,8 @@ export default async function BookingPage({ params, searchParams }) {
   const travellers = db.prepare("SELECT * FROM travellers WHERE booking_id = ? ORDER BY id").all(b.id);
   const payments = db.prepare("SELECT created_at, method, amount, kind FROM payments WHERE booking_id = ? AND status = 'success' ORDER BY created_at").all(b.id);
   const dueNow = amountDueNow(b);
+  const priceLines = bookingLines(b);
+  const mixedTypes = new Set(travellers.map((t) => t.price_type || "")).size > 1;
 
   return (
     <main className="page container">
@@ -59,7 +62,7 @@ export default async function BookingPage({ params, searchParams }) {
               <dt>Dates</dt><dd>{dateRange(b.start_date, b.end_date)}</dd>
               <dt>Pickup</dt><dd>{b.pickup_point || "We'll confirm by SMS"}{b.pickup_time ? `, ${b.pickup_time}` : ""}</dd>
               <dt>Lead contact</dt><dd>{b.customer_name} · {b.customer_phone}</dd>
-              <dt>Travellers</dt><dd>{travellers.map((t) => t.name).join(", ")}</dd>
+              <dt>Travellers</dt><dd>{travellers.map((t) => t.name + (mixedTypes ? ` (${t.price_type})` : "")).join(", ")}</dd>
             </dl>
           </section>
           <section className="card card-pad">
@@ -75,6 +78,11 @@ export default async function BookingPage({ params, searchParams }) {
         </div>
 
         <aside className="card card-pad">
+          {priceLines.length > 1 && (
+            <div className="price-box" style={{ marginTop: 0 }}>
+              {priceLines.map((l, i) => <div key={i} className="spread small"><span>{l.qty} × {l.label}</span><span>{money(l.total)}</span></div>)}
+            </div>
+          )}
           <dl className="kv" style={{ marginBottom: 16 }}>
             <dt>Total</dt><dd className="num">{money(b.total)}</dd>
             <dt>Paid</dt><dd className="num">{money(b.paid)}</dd>

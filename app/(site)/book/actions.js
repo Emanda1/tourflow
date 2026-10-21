@@ -18,7 +18,11 @@ export async function submitBooking(prevState, formData) {
   const travellers = Array.from({ length: count }, (_, i) => ({
     name: String(formData.get(`traveller_${i}`) || (i === 0 ? name : "")),
     phone: String(formData.get(`traveller_phone_${i}`) || ""),
+    type: String(formData.get(`traveller_type_${i}`) || ""),
   }));
+  // Extras arrive as extra_<id> = quantity.
+  const extras = [...formData.keys()].filter((k) => /^extra_\d{1,9}$/.test(k)).slice(0, 20)
+    .map((k) => ({ id: Number(k.slice(6)), quantity: Math.floor(Number(formData.get(k))) || 0 }));
   if (travellers.some((t) => !t.name.trim())) return { error: "Please enter a name for every traveller." };
 
   if (onlinePaymentsAvailable) expireUnpaidBookings(); // free seats from abandoned bookings before checking availability
@@ -30,6 +34,7 @@ export async function submitBooking(prevState, formData) {
       email: String(formData.get("email") || ""),
       phone: String(formData.get("phone") || ""),
       travellers,
+      extras,
       plan: formData.get("plan") === "deposit" ? "deposit" : "full",
       notes: String(formData.get("notes") || ""),
     });

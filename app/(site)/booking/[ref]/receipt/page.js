@@ -4,6 +4,7 @@ import { getBookingForCustomer } from "@/lib/access";
 import { money, date, dateRange, statusLabel } from "@/lib/format";
 import { company } from "@/lib/config";
 import PrintButton from "@/components/PrintButton";
+import { bookingLines } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Receipt", robots: { index: false } };
@@ -40,7 +41,9 @@ export default async function Receipt({ params, searchParams }) {
         <table style={{ marginTop: 20 }}>
           <thead><tr><th>Date</th><th>Description</th><th className="num">Amount</th></tr></thead>
           <tbody>
-            <tr><td>{date(b.created_at)}</td><td>{b.travellers} × {b.tour_title} @ {money(b.unit_price)}</td><td className="num">{money(b.total)}</td></tr>
+            {bookingLines(b).map((l, i) => (
+              <tr key={`l${i}`}><td>{i === 0 ? date(b.created_at) : ""}</td><td>{l.qty} × {l.extra ? l.label : `${b.tour_title}${l.label !== "Per person" ? ` (${l.label})` : ""}`} @ {money(l.unit)}</td><td className="num">{money(l.total)}</td></tr>
+            ))}
             {payments.map((p, i) => (
               <tr key={i}><td>{date(p.created_at)}</td><td>{p.kind === "refund" ? "Refund" : `Payment (${p.method})`}{p.reference ? <div className="small muted">Ref {p.reference}</div> : null}</td><td className="num">{p.kind === "refund" ? "" : "−"}{money(p.amount)}</td></tr>
             ))}

@@ -43,9 +43,12 @@ test("an old database is upgraded without losing anything", () => {
   assert.equal(b.deposit_percent, 40);
   assert.equal(b.paid, 80000);
   assert.equal(b.balance, 120000);
-  for (const t of ["users", "sessions", "audit_log", "settings", "enquiries", "login_attempts", "password_resets"]) {
+  for (const t of ["users", "sessions", "audit_log", "settings", "enquiries", "login_attempts", "password_resets", "tour_options", "booking_extras", "tour_photos"]) {
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name = ?").get(t), t);
   }
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM tours").get().n, 1, "no sample data added to a real database");
+  const cols = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
+  assert.ok(cols("travellers").includes("price") && cols("travellers").includes("price_type"), "travellers get price columns");
+  assert.ok(cols("tours").includes("price_label"));
   assert.ok(fs.existsSync(path.join(dir, "tourflow.db")));
 });

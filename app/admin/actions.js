@@ -11,6 +11,7 @@ import { company } from "@/lib/config";
 import { audit } from "@/lib/audit";
 import { text, int, isDate, isPhone, safeImageUrl, formValues } from "@/lib/validate";
 import { saveImage, UploadError } from "@/lib/uploads";
+import { MAX_OPTIONS, tourOptions, priceBooking } from "@/lib/pricing";
 
 const fail = (path, msg) => redirect(`${path}${path.includes("?") ? "&" : "?"}error=${encodeURIComponent(msg)}`);
 const METHODS = ["momo", "cash", "bank", "card"];
@@ -30,11 +31,41 @@ export async function saveTour(prev, formData) {
   const typedImage = text(formData, "image_url", { max: 500 });
   if (typedImage && !safeImageUrl(typedImage)) return bad("Image links must start with https:// and can't contain spaces, brackets or quotes. Or upload a photo instead.");
 
+  // Different prices: other traveller types and extras.
+  const readRows = (prefix, withPer) => {
+    const rows = [];
+    for (let i = 0; i < MAX_OPTIONS; i++) {
+      if (formData.get(`${prefix}_label_${i}`) === null) continue;
+      const label = text(formData, `${prefix}_label_${i}`, { max: 60 });
+      const rawPrice = String(formData.get(`${prefix}_price_${i}`) || "").trim();
+      rows.push({ id: int(formData, `${prefix}_id_${i}`, { min: 1 }), label, rawPrice, price: toPesewas(rawPrice), per: withPer && formData.get(`${prefix}_per_${i}`) === "booking" ? "booking" : "person" });
+    }
+    return rows;
+  };
+  const typeRows = readRows("type", false);
+  const extraRows = readRows("extra", true);
+  for (const r of [...typeRows, ...extraRows]) {
+    if (!r.label) return bad("Every extra price needs a name.");
+    if (!/\d/.test(r.rawPrice) || r.rawPrice.startsWith("-")) return bad(`Enter a price in cedis for "${r.label}", for example 900 or 1,200.50.`);
+    if (r.price > 100_000_000) return bad(`The price for "${r.label}" is too high.`);
+  }
+  if (extraRows.some((r) => r.price <= 0)) return bad("Extras must cost more than GH₵ 0. (A free traveller type, like infants, goes under traveller types.)");
+  const names = [...typeRows, ...extraRows].map((r) => r.label.toLowerCase());
+  if (new Set(names).size !== names.length) return bad("Two of the extra prices have the same name. Give each one a different name.");
+  const priceLabel = text(formData, "price_label", { max: 40 });
+
   // Keep the current cover unless a new photo/link is given or "remove" is ticked.
   const existing = id ? db.prepare("SELECT image_url FROM tours WHERE id = ?").get(id)?.image_url ?? null : null;
   let image = typedImage ? safeImageUrl(typedImage) : formData.get("remove_image") ? null : existing;
+  const removePhotos = formData.getAll("remove_photo").map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  const keptPhotos = id ? db.prepare(`SELECT COUNT(*) AS n FROM tour_photos WHERE tour_id = ? AND id NOT IN (${removePhotos.map(() => "?").join(",") || "0"})`).get(id, ...removePhotos).n : 0;
+  const newFiles = formData.getAll("photos").filter((f) => f && typeof f !== "string" && f.size > 0);
+  if (newFiles.length > 8) return bad("Add up to 8 photos at a time.");
+  if (keptPhotos + newFiles.length > 12) return bad("A tour can have up to 12 gallery photos. Remove some first.");
+  const newPhotos = [];
   try {
     image = (await saveImage(formData.get("cover"))) || image;
+    for (const f of newFiles) newPhotos.push(await saveImage(f));
   } catch (e) {
     if (e instanceof UploadError) return bad(e.message);
     throw e;
@@ -60,16 +91,35 @@ export async function saveTour(prev, formData) {
     const base = data.slug;
     for (let n = 2; db.prepare("SELECT 1 FROM tours WHERE slug = ? AND id != ?").get(data.slug, id || 0); n++) data.slug = `${base}-${n}`;
   }
+  data.price_label = priceLabel || null;
   let tourId = id;
   try {
+    db.transaction(() => {
     if (id) {
       db.prepare(`UPDATE tours SET title=@title, slug=@slug, destination=@destination, category=@category, duration_days=@duration_days,
         price=@price, deposit_percent=@deposit_percent, summary=@summary, description=@description, itinerary=@itinerary,
-        inclusions=@inclusions, exclusions=@exclusions, image_url=@image_url, active=@active WHERE id=@id`).run({ ...data, id });
+        inclusions=@inclusions, exclusions=@exclusions, image_url=@image_url, active=@active, price_label=@price_label WHERE id=@id`).run({ ...data, id });
     } else {
-      tourId = db.prepare(`INSERT INTO tours (title,slug,destination,category,duration_days,price,deposit_percent,summary,description,itinerary,inclusions,exclusions,image_url,active)
-        VALUES (@title,@slug,@destination,@category,@duration_days,@price,@deposit_percent,@summary,@description,@itinerary,@inclusions,@exclusions,@image_url,@active)`).run(data).lastInsertRowid;
+      tourId = db.prepare(`INSERT INTO tours (title,slug,destination,category,duration_days,price,deposit_percent,summary,description,itinerary,inclusions,exclusions,image_url,active,price_label)
+        VALUES (@title,@slug,@destination,@category,@duration_days,@price,@deposit_percent,@summary,@description,@itinerary,@inclusions,@exclusions,@image_url,@active,@price_label)`).run(data).lastInsertRowid;
     }
+    // Keep each option's id when it is edited, so customers in the middle of booking aren't interrupted.
+    const keep = [];
+    const upd = db.prepare("UPDATE tour_options SET label = ?, price = ?, per = ?, sort = ? WHERE id = ? AND tour_id = ? AND kind = ?");
+    const ins = db.prepare("INSERT INTO tour_options (tour_id, kind, label, price, per, sort) VALUES (?,?,?,?,?,?)");
+    for (const [kind, rows] of [["traveller", typeRows], ["extra", extraRows]]) {
+      rows.forEach((r, sort) => {
+        if (r.id && upd.run(r.label, r.price, r.per, sort, r.id, tourId, kind).changes) keep.push(r.id);
+        else keep.push(Number(ins.run(tourId, kind, r.label, r.price, r.per, sort).lastInsertRowid));
+      });
+    }
+    db.prepare(`DELETE FROM tour_options WHERE tour_id = ? AND id NOT IN (${keep.map(() => "?").join(",") || "0"})`).run(tourId, ...keep);
+    // Gallery photos
+    if (removePhotos.length) db.prepare(`DELETE FROM tour_photos WHERE tour_id = ? AND id IN (${removePhotos.map(() => "?").join(",")})`).run(tourId, ...removePhotos);
+    const maxSort = db.prepare("SELECT COALESCE(MAX(sort), 0) AS m FROM tour_photos WHERE tour_id = ?").get(tourId).m;
+    const addPhoto = db.prepare("INSERT INTO tour_photos (tour_id, url, sort) VALUES (?,?,?)");
+    newPhotos.forEach((url, i) => addPhoto.run(tourId, url, maxSort + 1 + i));
+    })();
   } catch (e) {
     if (String(e.message).includes("UNIQUE")) return bad("Another tour already uses that web address. Change the slug.");
     throw e;
@@ -171,14 +221,26 @@ export async function messageDeparture(formData) {
 
 export async function createManualBooking(prev, formData) {
   const user = await requireUser("bookings.edit");
-  const names = text(formData, "travellers", { max: 4000 }).split("\n").map((s) => s.trim()).filter(Boolean);
   const name = text(formData, "name", { max: 120 });
+  // Traveller rows (name + price type). An empty first name means the customer is the traveller.
+  const rows = [];
+  for (let i = 0; i < 30; i++) {
+    if (formData.get(`traveller_${i}`) === null) continue;
+    rows.push({ name: text(formData, `traveller_${i}`, { max: 120 }) || (rows.length === 0 ? name : ""), type: text(formData, `traveller_type_${i}`, { max: 12 }) });
+  }
+  if (!rows.length) rows.push({ name, type: "" });
+  if (rows.some((r) => !r.name)) return { error: "Please enter a name for every traveller, or remove the empty rows.", values: formValues(formData) };
+  const extras = [...formData.keys()].filter((k) => /^extra_\d{1,9}$/.test(k)).slice(0, 20)
+    .map((k) => ({ id: Number(k.slice(6)), quantity: Math.floor(Number(formData.get(k))) || 0 }));
   const source = text(formData, "source", { max: 20 });
   const method = text(formData, "method", { max: 10 });
   const paidNow = toPesewas(formData.get("paid_now"));
   const depForCheck = getDeparture(int(formData, "departure_id", { min: 1 }));
-  const expectedTotal = depForCheck ? depForCheck.price * Math.max(1, names.length || 1) : 0;
-  if (depForCheck && paidNow > expectedTotal) return { error: `Amount paid can't be more than the total of ${money(expectedTotal)}.`, values: formValues(formData) };
+  if (depForCheck && paidNow > 0) {
+    let expected = null;
+    try { expected = priceBooking({ basePrice: depForCheck.price, baseLabel: "", options: tourOptions(depForCheck.tour_id), travellers: rows, extras }).total; } catch { /* createBooking reports the problem */ }
+    if (expected != null && paidNow > expected) return { error: `Amount paid can't be more than the total of ${money(expected)}.`, values: formValues(formData) };
+  }
   let booking;
   try {
     booking = createBooking({
@@ -186,7 +248,8 @@ export async function createManualBooking(prev, formData) {
       name,
       email: text(formData, "email", { max: 160 }),
       phone: text(formData, "phone", { max: 30 }),
-      travellers: (names.length ? names : [name]).map((n) => ({ name: n })),
+      travellers: rows,
+      extras,
       plan: formData.get("plan") === "deposit" ? "deposit" : "full",
       source: ["walk-in", "phone", "agent"].includes(source) ? source : "walk-in",
       notes: text(formData, "notes", { max: 1000 }),

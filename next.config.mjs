@@ -28,7 +28,7 @@ const nextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["better-sqlite3"],
   experimental: {
-    serverActions: { bodySizeLimit: "6mb" }, // allows photo uploads
+    serverActions: { bodySizeLimit: "12mb" }, // several tour photos per save (photos are shrunk in the browser first; each is still limited to 5 MB)
   },
   async headers() {
     return [

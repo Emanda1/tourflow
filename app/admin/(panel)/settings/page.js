@@ -3,6 +3,7 @@ import { company, appUrl, paystackEnabled, demoPaymentsAllowed } from "@/lib/con
 import { getSetting } from "@/lib/db";
 import Toast from "@/components/Toast";
 import { saveSettings, sendTestSms } from "../../account-actions";
+import { ipDiagnostics, isPrivateIp } from "@/lib/request";
 
 export default async function SettingsPage({ searchParams }) {
   await requireUser("settings.manage");
@@ -11,6 +12,8 @@ export default async function SettingsPage({ searchParams }) {
   // Show only what the owner has actually saved; the built-in defaults appear as grey hints.
   const saved = (k) => getSetting(k) || "";
   const email = Boolean(process.env.SMTP_HOST);
+  const ip = await ipDiagnostics();
+  const ipOk = !isPrivateIp(ip.detected);
   const status = (ok, on, off) => <span className={`badge ${ok ? "badge-ok" : "badge-warn"}`}>{ok ? on : off}</span>;
   return (
     <div className="stack" style={{ maxWidth: 860 }}>
@@ -51,7 +54,20 @@ export default async function SettingsPage({ searchParams }) {
           <dt>SMS</dt><dd>{status(sms, "Arkesel connected", "Off: messages are only logged")}</dd>
           <dt>SMS sender name</dt><dd>{process.env.SMS_SENDER_ID || "TourFlow"}</dd>
           <dt>Email receipts</dt><dd>{status(email, "Email connected", "Off")}</dd>
+          <dt>Visitor addresses</dt><dd>{status(ipOk, "Working", "Needs setting up")} <span className="small muted">Your address as the system sees it: {ip.detected}</span></dd>
         </dl>
+        {!ipOk && (
+          <details className="small" style={{ marginTop: 8 }}>
+            <summary>Why this matters and how to fix it</summary>
+            <p>The system uses each visitor's address to stop spam bookings and to record who signed in. Right now it sees your hosting company's address instead of yours, so the server's IP settings need adjusting (see "Visitor addresses" in DEPLOYMENT.md). What the server received:</p>
+            <ul>
+              <li>X-Forwarded-For: <code>{ip.xff || "(none)"}</code></li>
+              <li>True-Client-IP: <code>{ip.trueClientIp || "(none)"}</code></li>
+              <li>CF-Connecting-IP: <code>{ip.cfConnectingIp || "(none)"}</code></li>
+              <li>X-Real-IP: <code>{ip.xRealIp || "(none)"}</code></li>
+            </ul>
+          </details>
+        )}
         <form action={sendTestSms} className="row" style={{ marginTop: 16 }}>
           <input name="phone" placeholder="Your phone, e.g. 024 123 4567" maxLength={30} required style={{ maxWidth: 260 }} />
           <button className="btn btn-secondary">Send test SMS</button>

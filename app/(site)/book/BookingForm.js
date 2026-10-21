@@ -6,7 +6,7 @@ const fmt = (p) => "GH₵ " + (p / 100).toLocaleString("en-GH", { minimumFractio
 const STEPS = ["Travellers", "Contact", "Payment"];
 const MAX_ONLINE_GROUP = 30; // bigger groups use the custom trip form
 
-export default function BookingForm({ canPayOnline = true, departureId, price, depositPercent, seatsLeft, initialCount = 1, tourTitle, dates }) {
+export default function BookingForm({ canPayOnline = true, departureId, price, depositPercent, seatsLeft, initialCount = 1, tourTitle, dates, baseLabel = "Per person", types = [], extras = [] }) {
   const [state, action, pending] = useActionState(submitBooking, null);
   const [step, setStep] = useState(0);
   const maxPax = Math.min(seatsLeft, MAX_ONLINE_GROUP);
@@ -15,9 +15,25 @@ export default function BookingForm({ canPayOnline = true, departureId, price, d
   const [plan, setPlan] = useState("full");
   const [names, setNames] = useState([]);
   const [contact, setContact] = useState({ name: "", phone: "", email: "" });
+  const [typeOf, setTypeOf] = useState([]); // traveller index → price type id ("" = main price)
+  const [extraQty, setExtraQty] = useState({}); // extra id → quantity
+  const [localError, setLocalError] = useState("");
   const panels = useRef([]);
 
-  const total = price * count;
+  // Price per traveller depends on their type; extras are added on top.
+  const typeById = Object.fromEntries(types.map((t) => [String(t.id), t]));
+  const travellerPrice = (i) => typeById[typeOf[i]]?.price ?? price;
+  const maxQty = (x) => (x.per === "booking" ? 1 : count);
+  const qtyOf = (x) => Math.min(extraQty[x.id] || 0, maxQty(x));
+  const lines = [];
+  for (let i = 0; i < count; i++) {
+    const label = typeById[typeOf[i]]?.label || baseLabel;
+    const unit = travellerPrice(i);
+    const line = lines.find((l) => l.label === label && l.unit === unit);
+    if (line) line.qty++; else lines.push({ label, unit, qty: 1 });
+  }
+  extras.forEach((x) => { const q = qtyOf(x); if (q > 0) lines.push({ label: x.label, unit: x.price, qty: q }); });
+  const total = lines.reduce((s, l) => s + l.unit * l.qty, 0);
   const deposit = Math.ceil((total * depositPercent) / 100);
   const travellerNames = Array.from({ length: count }, (_, i) => names[i] || (i === 0 ? contact.name : "") || `Traveller ${i + 1}`);
 
@@ -25,6 +41,8 @@ export default function BookingForm({ canPayOnline = true, departureId, price, d
     const panel = panels.current[step];
     const invalid = panel && [...panel.querySelectorAll("input,select,textarea")].find((el) => !el.checkValidity());
     if (invalid) { invalid.reportValidity(); return; }
+    if (step === 0 && total <= 0) { setLocalError("Please add at least one paying traveller."); return; }
+    setLocalError("");
     if (step === 0 && !contact.name) setContact((c) => ({ ...c, name: names[0] || "" }));
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -48,6 +66,7 @@ export default function BookingForm({ canPayOnline = true, departureId, price, d
         ))}
       </ol>
 
+      {localError && <div className="alert alert-error" role="alert">{localError}</div>}
       {state?.error && (
         <div className="alert alert-error" role="alert">
           {state.error}
@@ -79,8 +98,47 @@ export default function BookingForm({ canPayOnline = true, departureId, price, d
               <label htmlFor={`tp${i}`}>Phone (optional)</label>
               <input id={`tp${i}`} name={`traveller_phone_${i}`} inputMode="tel" />
             </div>
+            {types.length > 0 && (
+              <div className="field">
+                <label htmlFor={`tt${i}`}>Price</label>
+                <select id={`tt${i}`} name={`traveller_type_${i}`} value={typeOf[i] || ""} onChange={(e) => setTypeOf((a) => { const b = [...a]; b[i] = e.target.value; return b; })}>
+                  <option value="">{baseLabel} · {fmt(price)}</option>
+                  {types.map((t) => <option key={t.id} value={t.id}>{t.label} · {t.price ? fmt(t.price) : "free"}</option>)}
+                </select>
+              </div>
+            )}
           </div>
         ))}
+
+        {extras.length > 0 && (
+          <div className="extras">
+            <h3>Extras <span className="muted small">(optional)</span></h3>
+            {extras.map((x) => (
+              <div key={x.id} className="extra-row">
+                <div>
+                  <strong>{x.label}</strong>
+                  <div className="small muted">{fmt(x.price)} {x.per === "booking" ? "per booking" : "per person"}</div>
+                </div>
+                <input type="hidden" name={`extra_${x.id}`} value={qtyOf(x)} />
+                {x.per === "booking" ? (
+                  <label className="inline-check"><input type="checkbox" checked={qtyOf(x) > 0} onChange={(e) => setExtraQty({ ...extraQty, [x.id]: e.target.checked ? 1 : 0 })} /> Add</label>
+                ) : (
+                  <div className="stepper stepper-sm">
+                    <button type="button" onClick={() => setExtraQty({ ...extraQty, [x.id]: Math.max(0, qtyOf(x) - 1) })} disabled={qtyOf(x) <= 0} aria-label={`Fewer ${x.label}`}>−</button>
+                    <output aria-live="polite">{qtyOf(x)}</output>
+                    <button type="button" onClick={() => setExtraQty({ ...extraQty, [x.id]: Math.min(maxQty(x), qtyOf(x) + 1) })} disabled={qtyOf(x) >= maxQty(x)} aria-label={`More ${x.label}`}>+</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {(types.length > 0 || extras.length > 0) && (
+          <div className="price-box">
+            {lines.map((l) => <div key={l.label + l.unit} className="spread small"><span>{l.qty} × {l.label}</span><span>{fmt(l.unit * l.qty)}</span></div>)}
+            <div className="spread"><strong>Total</strong><strong className="price">{fmt(total)}</strong></div>
+          </div>
+        )}
       </div>
 
       {/* Step 2: contact */}
@@ -122,6 +180,7 @@ export default function BookingForm({ canPayOnline = true, departureId, price, d
             <dt>Trip</dt><dd>{tourTitle}</dd>
             <dt>Dates</dt><dd>{dates}</dd>
             <dt>Travellers</dt><dd>{travellerNames.join(", ")}</dd>
+            <dt>Price</dt><dd>{lines.map((l) => <div key={l.label + l.unit}>{l.qty} × {l.label} · {fmt(l.unit * l.qty)}</div>)}<strong>Total {fmt(total)}</strong></dd>
             <dt>Contact</dt><dd>{contact.name} · {contact.phone}</dd>
             <dt>Pay now</dt><dd><strong>{fmt(plan === "deposit" ? deposit : total)}</strong></dd>
           </dl>
